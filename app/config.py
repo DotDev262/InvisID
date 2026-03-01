@@ -1,5 +1,8 @@
-from pydantic_settings import BaseSettings
+import os
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 class Settings(BaseSettings):
@@ -17,13 +20,17 @@ class Settings(BaseSettings):
     # File settings
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
     ALLOWED_EXTENSIONS: list = [".png", ".jpg", ".jpeg"]
+    UPLOAD_DIR: str = os.path.join(BASE_DIR, "storage/uploads")
+    PROCESSED_DIR: str = os.path.join(BASE_DIR, "storage/processed")
+    RESULT_DIR: str = os.path.join(BASE_DIR, "storage/results")
 
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 10
 
-    class Config:
-        env_file = ".env"
-        extra = "allow"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="allow"
+    )
 
 
 @lru_cache()
