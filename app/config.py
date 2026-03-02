@@ -1,5 +1,6 @@
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 from functools import lru_cache
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -16,6 +17,8 @@ class Settings(BaseSettings):
     # App settings
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
+    HOST: str = "127.0.0.1"
+    PORT: int = 8000
 
     # File settings
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB

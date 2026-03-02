@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, UploadFile, File
-from fastapi.responses import FileResponse
 import os
 from typing import List
 
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import FileResponse
+
 from app.config import get_settings
-from app.dependencies.auth import EmployeeUser, AdminUser
+from app.dependencies.auth import EmployeeUser
 from app.models.schemas import ImageResponse
 from app.utils.logging import get_logger
 

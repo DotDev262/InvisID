@@ -1,17 +1,18 @@
+import os
+import sys
+from datetime import datetime, timezone
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from datetime import datetime, timezone
-import sys
-import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.middleware.security_headers import SecurityHeadersMiddleware
-from app.middleware.rate_limit import RateLimitMiddleware
-from app.routers import admin, images, jobs
-from app.utils.logging import setup_logging, get_logger
 from app.config import get_settings
+from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.models.schemas import HealthResponse
+from app.routers import admin, images, jobs
+from app.utils.logging import get_logger, setup_logging
 
 # Initialize settings and structured logging
 settings = get_settings()
@@ -76,4 +77,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=settings.HOST, port=settings.PORT)

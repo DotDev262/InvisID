@@ -1,7 +1,8 @@
-from fastapi import Header, HTTPException, Depends
-from typing import Annotated
 import hashlib
 import time
+from typing import Annotated
+
+from fastapi import Depends, Header, HTTPException
 
 from app.config import get_settings
 

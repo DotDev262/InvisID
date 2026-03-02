@@ -1,9 +1,10 @@
 """Rate limiting middleware."""
 
-from fastapi import Request, HTTPException
-from starlette.middleware.base import BaseHTTPMiddleware
-import time
 import hashlib
+import time
+
+from fastapi import HTTPException, Request
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import get_settings
 

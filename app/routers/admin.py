@@ -1,28 +1,54 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks
 import os
-import shutil
-import uuid
 import time
-from typing import List
+import uuid
+from io import BytesIO
+
+import magic  # Already in your dependencies
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
+from PIL import Image, ImageOps  # Pillow is already in your dependencies
 
 from app.config import get_settings
 from app.dependencies.auth import AdminUser
+from app.models.schemas import InvestigationResponse, UploadResponse
 from app.routers import jobs
-from app.models.schemas import UploadResponse, InvestigationResponse
 from app.utils.logging import get_logger
 
 router = APIRouter(tags=["admin"])
 settings = get_settings()
 logger = get_logger("app.admin")
 
+def sanitize_image(file_content: bytes, ext: str) -> bytes:
+    """
+    Strip all EXIF metadata from the image to prevent info leaks 
+    and normalize the image.
+    """
+    try:
+        img = Image.open(BytesIO(file_content))
+        
+        # This creates a new image containing only the pixel data
+        data = list(img.getdata())
+        clean_img = Image.new(img.mode, img.size)
+        clean_img.putdata(data)
+        
+        # Fix orientation if needed (Pillow doesn't do this by default when stripping)
+        clean_img = ImageOps.exif_transpose(img)
+        
+        output = BytesIO()
+        # Save without any extra info
+        save_format = "JPEG" if ext.lower() in [".jpg", ".jpeg"] else "PNG"
+        clean_img.save(output, format=save_format, optimize=True)
+        return output.getvalue()
+    except Exception as e:
+        logger.error(f"Image sanitization failed: {str(e)}")
+        # If sanitization fails, we reject the file as a safety measure
+        raise ValueError("Could not sanitize image file") from e
+
 def process_investigation(job_id: str, file_path: str):
     """Background task to extract watermark from a leaked image."""
     try:
         logger.info(f"Starting investigation for job_id: {job_id}")
-        # Simulate processing time
         time.sleep(5)
         
-        # Mock result
         result = {
             "leaked_by": "EMP-001",
             "confidence": 0.98,
@@ -33,7 +59,6 @@ def process_investigation(job_id: str, file_path: str):
         jobs.update_job(job_id, "completed", result=result)
         logger.info(f"Investigation completed for job_id: {job_id}")
         
-        # Clean up uploaded file for investigation
         if os.path.exists(file_path):
             os.remove(file_path)
             
@@ -47,43 +72,54 @@ async def upload_master_image(
     file: UploadFile = File(...)
 ):
     """
-    Upload a master image for leak attribution.
+    Upload and sanitize a master image.
     
-    This image will be stored in the master storage and used as a source 
-    for watermarked downloads. Requires **Admin** privileges.
+    1. Validates extension
+    2. Validates actual MIME type (Deep Inspection)
+    3. Strips all EXIF metadata (Sanitization)
+    4. Saves to secure storage
     """
-    # Check file extension
+    content = await file.read()
+    
+    # 1. Check Extension
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in settings.ALLOWED_EXTENSIONS:
-        logger.warning(f"Rejected upload of unsupported file type: {ext}")
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Unsupported file type. Allowed: {', '.join(settings.ALLOWED_EXTENSIONS)}"
-        )
+        raise HTTPException(status_code=400, detail="Unsupported extension")
 
-    # Generate unique ID and filename
+    # 2. Deep MIME Type Verification (The 'magic' check)
+    mime = magic.from_buffer(content, mime=True)
+    if not mime.startswith("image/"):
+        logger.error(f"Security Alert: File with ext {ext} has invalid MIME type: {mime}")
+        raise HTTPException(status_code=400, detail="Invalid file content. Must be an image.")
+
+    # 3. Sanitize (Strip Metadata)
+    try:
+        sanitized_content = sanitize_image(content, ext)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # 4. Save
     image_id = str(uuid.uuid4())
     filename = f"{image_id}{ext}"
     file_path = os.path.join(settings.UPLOAD_DIR, filename)
 
-    # Ensure upload directory exists
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
     try:
         with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        logger.info(f"Master image uploaded: {filename} by admin")
+            buffer.write(sanitized_content)
+        logger.info(f"Master image uploaded and sanitized: {filename}")
     except Exception as e:
         logger.error(f"Failed to save image {filename}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to save image: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to save image") from e
     finally:
-        file.file.close()
+        await file.close()
 
     return {
         "id": image_id,
         "filename": filename,
         "status": "uploaded",
-        "message": "Master image uploaded successfully"
+        "message": "Master image uploaded and sanitized successfully"
     }
 
 @router.post("/investigate", response_model=InvestigationResponse)
@@ -92,34 +128,22 @@ async def investigate_image(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...)
 ):
-    """
-    Extract watermark from a suspected leaked image.
+    """Starts a background investigation job."""
+    content = await file.read()
     
-    Starts a background job to process the image and identify the 
-    employee who originally downloaded it. Returns a `job_id` that 
-    can be polled for results. Requires **Admin** privileges.
-    """
-    # Check file extension
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in settings.ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Unsupported file type. Allowed: {', '.join(settings.ALLOWED_EXTENSIONS)}"
-        )
+    # MIME verification for investigation too
+    mime = magic.from_buffer(content, mime=True)
+    if not mime.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Invalid image file")
 
-    # Save file for investigation
+    ext = os.path.splitext(file.filename)[1].lower()
     job_id = jobs.create_job("investigation")
     file_path = os.path.join(settings.RESULT_DIR, f"{job_id}{ext}")
     
     os.makedirs(settings.RESULT_DIR, exist_ok=True)
     
-    try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        logger.info(f"Investigation job created: {job_id}")
-    except Exception as e:
-        logger.error(f"Failed to save investigation image: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to save image for investigation")
+    with open(file_path, "wb") as buffer:
+        buffer.write(content)
     
     background_tasks.add_task(process_investigation, job_id, file_path)
     

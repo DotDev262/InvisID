@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends
-from typing import Dict, Any, List
 import uuid
+from typing import Any, Dict
 
-from app.dependencies.auth import AdminUser, EmployeeUser
+from fastapi import APIRouter, HTTPException
+
 from app.models.schemas import JobResponse
 from app.utils.logging import get_logger
 

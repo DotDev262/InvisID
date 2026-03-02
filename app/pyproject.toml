@@ -1,7 +1,7 @@
 [project]
 name = "app"
 version = "0.1.0"
-description = "Add your description here"
+description = "InvisID - Leak Attribution System"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -21,4 +21,20 @@ dev = [
     "httpx>=0.28.1",
     "pip-audit>=2.10.0",
     "pytest>=9.0.2",
+    "ruff>=0.15.4",
 ]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# Enable security (S), bugbear (B), and complexity (C90) rules
+select = ["E", "F", "B", "S", "C90", "I"]
+ignore = ["B008"] # Allow FastAPI Depends() and File() calls in arguments
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"] # Allow asserts in tests
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
