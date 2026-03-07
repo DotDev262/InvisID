@@ -8,7 +8,10 @@ from app.config import get_settings
 from app.dependencies.auth import EmployeeUser
 from app.models.schemas import ImageResponse
 from app.utils.logging import get_logger
+from app.services.cryptography.crypto_service import CryptoService
+from app.services.cryptography.key_manager import load_key
 
+crypto = CryptoService(load_key())
 router = APIRouter(prefix="/images", tags=["images"])
 settings = get_settings()
 logger = get_logger("app.images")
