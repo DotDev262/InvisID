@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>InvisID Audit Logs - Admin View</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#10b77f",
+                        "background-dark": "#0f172a",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                },
+            },
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .sidebar-item-active { background-color: rgba(16, 183, 127, 0.15); border-left: 4px solid #10b77f; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast-animate { animation: slideIn 0.3s ease-out forwards; }
+    </style>
+</head>
+<body class="bg-background-dark text-slate-100 min-h-screen flex overflow-hidden">
+    <div id="toast-container" class="fixed bottom-8 right-8 z-[100] flex flex-col gap-3"></div>
+    
+    <div id="login-overlay" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
+            <div class="text-center mb-8">
+                <div class="bg-primary rounded-xl p-3 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                    <span class="material-symbols-outlined text-4xl text-white">admin_panel_settings</span>
+                </div>
+                <h1 class="text-2xl font-bold">Admin Lab</h1>
+                <p class="text-slate-400 mt-2">Enter Admin API Key</p>
+            </div>
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <input type="password" id="api-key-input" required
+                    class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                    placeholder="Enter Admin API Key">
+                <button type="submit" class="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-lg font-bold">
+                    Access Admin Lab
+                </button>
+            </form>
+            <div class="mt-6 pt-6 border-t border-slate-700">
+                <a href="/" class="flex items-center justify-center gap-2 text-slate-400 hover:text-white transition-colors text-sm">
+                    <span class="material-symbols-outlined text-sm">arrow_back</span>
+                    Return to Home
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <aside class="w-64 border-r border-slate-800 flex flex-col bg-slate-900/50 hidden md:flex">
+        <div class="p-6 flex items-center gap-3">
+            <div class="bg-primary rounded-lg p-2 text-white"><span class="material-symbols-outlined block">shield_lock</span></div>
+            <h1 class="font-display font-bold text-xl tracking-tight text-primary">InvisID</h1>
+        </div>
+        <nav class="flex-1 px-4 space-y-2 mt-4">
+            <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin">
+                <span class="material-symbols-outlined">dashboard</span>
+                <span class="font-medium">Dashboard</span>
+            </a>
+            <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin/investigate">
+                <span class="material-symbols-outlined">search_check</span>
+                <span class="font-medium">Investigations</span>
+            </a>
+            <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin/stress-test">
+                <span class="material-symbols-outlined">experiment</span>
+                <span class="font-medium">Stress-Test Lab</span>
+            </a>
+            <a class="sidebar-item-active flex items-center gap-3 px-4 py-3 rounded-lg text-primary transition-colors" href="/admin/audit-logs">
+                <span class="material-symbols-outlined">history_edu</span>
+                <span class="font-medium">Audit Logs</span>
+            </a>
+        </nav>
+    </aside>
+
+    <main class="flex-1 flex flex-col overflow-y-auto">
+        <header class="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-10">
+            <div class="flex items-center gap-2 text-primary font-semibold">
+                <span class="material-symbols-outlined">verified_user</span>
+                <span>Admin Session: Active</span>
+            </div>
+            <button onclick="logout()" class="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all text-sm font-bold border border-red-500/20 shadow-lg shadow-red-500/10">
+                <span class="material-symbols-outlined text-sm">logout</span> Sign Out
+            </button>
+        </header>
+
+        <div class="p-8 max-w-6xl mx-auto w-full space-y-8">
+            <div class="flex items-end justify-between">
+                <div>
+                    <h2 class="text-3xl font-bold tracking-tight">Audit Logs</h2>
+                    <p class="text-slate-400 mt-1">Monitor system activity and forensic access records.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div id="chain-status" class="flex items-center gap-2 bg-green-500/10 text-green-400 px-3 py-2 rounded-lg border border-green-500/20 text-xs font-bold uppercase tracking-wider">
+                        <span class="material-symbols-outlined text-sm">link</span>
+                        Chain Integrity: Verified
+                    </div>
+                    <button onclick="exportLogs()" class="bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 text-sm">
+                        <span class="material-symbols-outlined text-sm">download</span>
+                        Export CSV
+                    </button>
+                    <button onclick="window.location.reload()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 text-sm">
+                        <span class="material-symbols-outlined text-sm">refresh</span>
+                        Refresh Logs
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden">
+                <div class="p-4 border-b border-slate-700 bg-slate-800/50 flex flex-wrap gap-4">
+                    <div class="relative">
+                        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">search</span>
+                        <input type="text" placeholder="Search logs..." class="bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-primary w-64">
+                    </div>
+                    <select class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary text-slate-400">
+                        <option>All Events</option>
+                        <option>Uploads</option>
+                        <option>Downloads</option>
+                        <option>Investigations</option>
+                    </select>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-slate-900/50 border-b border-slate-700">
+                            <tr>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Timestamp</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">User</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Event Type</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Resource</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-table" class="divide-y divide-slate-800">
+                            <!-- Logs will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let IS_LOGGED_IN = localStorage.getItem('admin_logged_in') === 'true';
+        let SIGNING_KEY = localStorage.getItem('signing_key') || '';
+
+        async function generateSignature(path, timestamp) {
+            const msg = `${timestamp}${path}`;
+            const enc = new TextEncoder();
+            const key = await crypto.subtle.importKey(
+                "raw", enc.encode(SIGNING_KEY),
+                { name: "HMAC", hash: "SHA-256" },
+                false, ["sign"]
+            );
+            const signature = await crypto.subtle.sign("HMAC", key, enc.encode(msg));
+            return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function getAuthHeaders(path) {
+            const timestamp = (Date.now() / 1000).toString();
+            const signature = await generateSignature(path, timestamp);
+            return {
+                'X-Timestamp': timestamp,
+                'X-Signature': signature
+            };
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+            const apiKey = document.getElementById('api-key-input').value.trim();
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_key: apiKey })
+                });
+                
+                if (!response.ok) throw new Error('Invalid Admin Key');
+                const data = await response.json();
+                if (data.role !== 'admin') throw new Error('Admin privileges required');
+
+                localStorage.setItem('admin_logged_in', 'true');
+                localStorage.setItem('signing_key', data.signing_key);
+                SIGNING_KEY = data.signing_key;
+
+                document.getElementById('login-overlay').classList.add('hidden');
+                showToast('Admin access granted', 'success');
+                loadAuditLogs();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        async function logout() {
+            try { 
+                const path = '/api/auth/logout';
+                const headers = await getAuthHeaders(path);
+                await fetch(path, { method: 'POST', headers }); 
+            } catch (e) {}
+            localStorage.removeItem('admin_logged_in');
+            localStorage.removeItem('signing_key');
+            showToast('Signed out successfully', 'info');
+            setTimeout(() => window.location.href = '/', 500);
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            
+            const colors = {
+                success: 'bg-primary border-primary/20 text-white',
+                error: 'bg-red-500 border-red-500/20 text-white',
+                info: 'bg-slate-800 border-slate-700 text-slate-200'
+            };
+
+            const icons = {
+                success: 'check_circle',
+                error: 'error',
+                info: 'info'
+            };
+
+            toast.className = `${colors[type]} border px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 min-w-[300px] toast-animate`;
+            toast.innerHTML = `
+                <span class="material-symbols-outlined">${icons[type]}</span>
+                <span class="font-medium">${message}</span>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                toast.style.transition = 'all 0.3s ease-in';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        async function loadAuditLogs() {
+            try {
+                const path = '/api/logs/';
+                const headers = await getAuthHeaders(path);
+                const response = await fetch(path, { headers });
+                if (!response.ok) {
+                    if (response.status === 401) logout();
+                    throw new Error('Failed to load logs');
+                }
+                const data = await response.json();
+                renderLogs(data.logs);
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        async function exportLogs() {
+            try {
+                const path = '/api/logs/export';
+                const headers = await getAuthHeaders(path);
+                const response = await fetch(path, { headers });
+                if (!response.ok) throw new Error('Export failed');
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'invisid_audit_logs.csv';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+            } catch (e) {
+                showToast(e.message, 'error');
+            }
+        }
+
+        function escapeHTML(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function renderLogs(logs) {
+            const tbody = document.getElementById('audit-table');
+            if (logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-slate-500 italic text-sm">No activity recorded yet.</td></tr>';
+                return;
+            }
+
+            const getEventBadge = (type) => {
+                const classes = {
+                    'MASTER_UPLOAD': 'bg-blue-500/10 text-blue-400',
+                    'IMAGE_DOWNLOAD': 'bg-purple-500/10 text-purple-400',
+                    'LEAK_INVESTIGATION': 'bg-red-500/10 text-red-400'
+                };
+                return `<span class="text-xs font-medium ${classes[type] || 'bg-slate-500/10 text-slate-400'} px-2 py-1 rounded">${type}</span>`;
+            };
+
+            tbody.innerHTML = logs.map(log => `
+                <tr class="hover:bg-slate-700/30 transition-colors">
+                    <td class="px-6 py-4 text-xs font-mono text-slate-400">${new Date(log.timestamp).toLocaleString()}</td>
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 h-7 bg-primary/20 text-primary rounded-full flex items-center justify-center text-[10px] font-bold">
+                                ${escapeHTML(log.user_id).substring(0,2).toUpperCase()}
+                            </div>
+                            <span class="text-sm">${escapeHTML(log.user_id)}</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4">${getEventBadge(log.event_type)}</td>
+                    <td class="px-6 py-4 text-sm text-slate-300 italic truncate max-w-[200px]" title="${escapeHTML(log.resource)}">${escapeHTML(log.resource)}</td>
+                    <td class="px-6 py-4">
+                        <div class="flex flex-col gap-1">
+                            <span class="flex items-center gap-1 text-[10px] ${log.status === 'success' ? 'text-green-400' : 'text-amber-400'} font-bold">
+                                <span class="w-1 h-1 ${log.status === 'success' ? 'bg-green-400' : 'bg-amber-400'} rounded-full"></span>
+                                ${log.status.toUpperCase()}
+                            </span>
+                            <span class="text-[8px] font-mono text-slate-600 truncate max-w-[100px]" title="Hash: ${log.current_hash}">
+                                ${log.current_hash ? log.current_hash.substring(0,12) + '...' : '---'}
+                            </span>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (IS_LOGGED_IN) {
+                document.getElementById('login-overlay').classList.add('hidden');
+                loadAuditLogs();
+            }
+        });
+    </script>
+</body>
+</html>

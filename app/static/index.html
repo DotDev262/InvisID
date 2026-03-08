@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>InvisID - Secure Leak Attribution</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#10b77f",
+                        "background-dark": "#0f172a",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                    },
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background-dark text-slate-100 min-h-screen flex items-center justify-center p-6">
+    <div class="max-w-4xl w-full">
+        <div class="text-center mb-12">
+            <div class="bg-primary rounded-2xl p-4 w-20 h-20 mx-auto mb-6 flex items-center justify-center shadow-lg shadow-primary/20">
+                <span class="material-symbols-outlined text-5xl text-white">shield_lock</span>
+            </div>
+            <h1 class="text-5xl font-bold tracking-tight mb-4">InvisID</h1>
+            <p class="text-xl text-slate-400 max-w-2xl mx-auto">
+                Advanced forensic watermarking and leak attribution system for corporate assets.
+            </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Employee Portal -->
+            <a href="/gallery" class="group bg-slate-800/50 border border-slate-700 p-8 rounded-2xl hover:border-primary/50 transition-all hover:bg-slate-800">
+                <div class="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary mb-6 group-hover:scale-110 transition-transform">
+                    <span class="material-symbols-outlined text-3xl">photo_library</span>
+                </div>
+                <h2 class="text-2xl font-bold mb-3">Employee Gallery</h2>
+                <p class="text-slate-400 mb-6">
+                    Access and download watermarked assets for authorized internal use.
+                </p>
+                <div class="flex items-center text-primary font-semibold gap-2">
+                    Enter Portal <span class="material-symbols-outlined">arrow_forward</span>
+                </div>
+            </a>
+
+            <!-- Admin Portal -->
+            <a href="/admin" class="group bg-slate-800/50 border border-slate-700 p-8 rounded-2xl hover:border-primary/50 transition-all hover:bg-slate-800">
+                <div class="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-500 mb-6 group-hover:scale-110 transition-transform">
+                    <span class="material-symbols-outlined text-3xl">admin_panel_settings</span>
+                </div>
+                <h2 class="text-2xl font-bold mb-3">Admin Lab</h2>
+                <p class="text-slate-400 mb-6">
+                    Upload master images, extract forensic watermarks, and identify leak sources.
+                </p>
+                <div class="flex items-center text-amber-500 font-semibold gap-2">
+                    Access Lab <span class="material-symbols-outlined">arrow_forward</span>
+                </div>
+            </a>
+        </div>
+
+        <footer class="mt-16 text-center text-slate-500 text-sm">
+            <p>&copy; 2026 InvisID Security Systems. All rights reserved.</p>
+        </footer>
+    </div>
+</body>
+</html>
