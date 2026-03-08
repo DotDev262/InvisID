@@ -18,8 +18,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     """Rate limiting middleware."""
 
     async def dispatch(self, request: Request, call_next):
-        # Skip rate limiting for health check
-        if request.url.path in ["/health", "/", "/docs", "/openapi.json"]:
+
+        # Skip rate limiting for health check and docs
+        if request.url.path in [
+            "/health",
+            "/",
+            "/docs",
+            "/openapi.json",
+            "/api/docs",
+            "/api/openapi.json",
+        ]:
             return await call_next(request)
 
         # Get API key from header
@@ -40,7 +48,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Check limit
         if len(rate_limit_store.get(key_hash, [])) >= settings.RATE_LIMIT_PER_MINUTE:
             raise HTTPException(
-                status_code=429, detail="Rate limit exceeded. Max 10 requests/minute."
+                status_code=429,
+                detail="Rate limit exceeded. Max 10 requests/minute."
             )
 
         # Add current request

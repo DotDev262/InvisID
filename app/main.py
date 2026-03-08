@@ -13,6 +13,7 @@ from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.models.schemas import HealthResponse
 from app.routers import admin, images, jobs
 from app.utils.logging import get_logger, setup_logging
+from app.routers import investigate
 
 # Initialize settings and structured logging
 settings = get_settings()
@@ -21,16 +22,8 @@ logger = get_logger("app.main")
 
 app = FastAPI(
     title="InvisID API",
-    description="""
-    Leak Attribution System for Sensitive Images.
-    
-    This API provides tools for:
-    * **Administrators**: Uploading master images and investigating leaks.
-    * **Employees**: Downloading watermarked images for legitimate use.
-    """,
-    version="1.0.0",
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json"
+    description="""...""",
+    version="1.0.0"
 )
 
 @app.exception_handler(Exception)
@@ -56,6 +49,7 @@ app.add_middleware(RateLimitMiddleware)
 app.include_router(admin.router, prefix="/api")
 app.include_router(images.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
+app.include_router(investigate.router, prefix="/api")
 
 @app.get("/", tags=["system"])
 async def root():

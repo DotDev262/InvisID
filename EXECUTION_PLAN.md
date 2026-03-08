@@ -497,6 +497,11 @@ RivaGAN (deep learning) can be trained to survive these attacks.
 - **Dockerization**: Containerize the application with `Dockerfile` and `docker-compose.yml` for consistent cross-platform deployment.
 - **Automated CI Pipeline**: Integrate **GitHub Actions** to automatically trigger security scans (Ruff, Bandit) and unit tests on every push.
 
+### 📊 Observability & Monitoring
+- **Admin Dashboard Integration**: Build a real-time monitoring view in the UI to visualize system performance, watermark extraction success rates, and download trends using existing structured logs.
+- **Audit Chain Visualization**: Create a visual "Chain of Custody" tool in the UI to track an image from upload through every employee download to final leak investigation.
+- **Distributed Tracing**: Implement **X-Request-ID** middleware to track requests across the system for faster debugging and auditability.
+
 ---
 
 **Document Version:** Final  
