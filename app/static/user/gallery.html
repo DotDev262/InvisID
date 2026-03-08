@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>InvisID - Employee Gallery</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#10b77f",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#0f172a",
+                        "neutral-dark": "#1e293b",
+                        "accent-amber": "#f59e0b",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .tab-active { border-bottom: 2px solid #10b77f; color: #10b77f; }
+        .tab-inactive { color: #94a3b8; }
+        .tab-inactive:hover { color: #cbd5e1; }
+    </style>
+    <style>body { min-height: max(884px, 100dvh); }</style>
+    <style>
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast-animate { animation: slideIn 0.3s ease-out forwards; }
+    </style>
+</head>
+
+<body class="bg-background-dark text-slate-100 min-h-screen flex flex-col">
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-8 right-8 z-[100] flex flex-col gap-3"></div>
+    <div id="login-overlay" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
+            <div class="text-center mb-8">
+                <div class="bg-primary rounded-xl p-3 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                    <span class="material-symbols-outlined text-4xl text-white">shield_lock</span>
+                </div>
+                <h1 class="text-2xl font-bold">InvisID</h1>
+                <p class="text-slate-400 mt-2">Enter your API key to access the gallery</p>
+            </div>
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">API Key</label>
+                    <input type="password" id="api-key-input" required
+                        class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-primary transition-colors"
+                        placeholder="Enter your API key">
+                </div>
+                <button type="submit"
+                    class="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-lg font-bold transition-all">
+                    Access Gallery
+                </button>
+            </form>
+            <div class="mt-6 pt-6 border-t border-slate-700">
+                <a href="/" class="flex items-center justify-center gap-2 text-slate-400 hover:text-white transition-colors text-sm">
+                    <span class="material-symbols-outlined text-sm">arrow_back</span>
+                    Return to Home
+                </a>
+            </div>
+            <p class="text-xs text-slate-500 text-center mt-4">Contact your administrator if you don't have an API key</p>
+        </div>
+    </div>
+
+    <header class="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-10 w-full">
+        <div class="flex items-center gap-6">
+            <a href="/" class="flex items-center gap-3 group">
+                <div class="bg-primary rounded-lg p-1.5 text-white group-hover:scale-110 transition-transform">
+                    <span class="material-symbols-outlined block text-xl">shield_lock</span>
+                </div>
+                <h1 class="font-display font-bold text-xl tracking-tight text-primary">InvisID</h1>
+            </a>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <div class="hidden md:flex items-center gap-2 text-slate-300 text-xs mr-2">
+                <span class="material-symbols-outlined text-xs">person</span>
+                <span>John Doe (EMP-001)</span>
+            </div>
+            <button onclick="logout()" class="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all text-sm font-bold border border-red-500/20 shadow-lg shadow-red-500/10">
+                <span class="material-symbols-outlined text-sm">logout</span>
+                Sign Out
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 flex flex-col overflow-y-auto">
+        <div class="p-8 max-w-6xl mx-auto w-full">
+            <div class="flex items-end justify-between mb-8">
+                <div>
+                    <h2 class="text-3xl font-bold tracking-tight" id="page-title">Image Gallery</h2>
+                    <p class="text-slate-400 mt-1">Browse and download watermarked images for your use.</p>
+                </div>
+            </div>
+
+            <div class="flex gap-6 border-b border-slate-700 mb-8">
+                <button id="tab-gallery" class="tab-active pb-3 px-1 font-medium flex items-center gap-2 transition-colors" onclick="switchTab('gallery')">
+                    <span class="material-symbols-outlined text-sm">photo_library</span>
+                    Gallery
+                </button>
+                <button id="tab-history" class="tab-inactive pb-3 px-1 font-medium flex items-center gap-2 transition-colors" onclick="switchTab('history')">
+                    <span class="material-symbols-outlined text-sm">history</span>
+                    Download History
+                </button>
+            </div>
+
+            <div id="gallery-view">
+                <div id="gallery-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    <div class="col-span-full text-center py-12 text-slate-500">
+                        <span class="material-symbols-outlined text-4xl mb-2">hourglass_empty</span>
+                        <p>Loading images...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="history-view" class="hidden">
+                <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                    <table class="w-full">
+                        <thead class="bg-slate-800/50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Image</th>
+                                <th class="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Downloaded</th>
+                                <th class="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-right text-xs font-bold text-slate-400 uppercase tracking-wider">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table" class="divide-y divide-slate-800">
+                            <tr>
+                                <td colspan="4" class="px-6 py-8 text-center text-slate-500">
+                                    <span class="material-symbols-outlined text-4xl mb-2">history</span>
+                                    <p>Loading download history...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let IS_LOGGED_IN = localStorage.getItem('is_logged_in') === 'true';
+        let SIGNING_KEY = localStorage.getItem('signing_key') || '';
+        let images = [];
+        let history = [];
+
+        async function generateSignature(path, timestamp) {
+            const msg = `${timestamp}${path}`;
+            const enc = new TextEncoder();
+            const key = await crypto.subtle.importKey(
+                "raw", enc.encode(SIGNING_KEY),
+                { name: "HMAC", hash: "SHA-256" },
+                false, ["sign"]
+            );
+            const signature = await crypto.subtle.sign("HMAC", key, enc.encode(msg));
+            return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function getAuthHeaders(path) {
+            const timestamp = (Date.now() / 1000).toString();
+            const signature = await generateSignature(path, timestamp);
+            return {
+                'X-Timestamp': timestamp,
+                'X-Signature': signature
+            };
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+            const input = document.getElementById('api-key-input');
+            const apiKey = input.value.trim();
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_key: apiKey })
+                });
+                
+                if (!response.ok) throw new Error('Invalid API key');
+                const data = await response.json();
+                
+                localStorage.setItem('is_logged_in', 'true');
+                localStorage.setItem('signing_key', data.signing_key);
+                SIGNING_KEY = data.signing_key;
+
+                document.getElementById('login-overlay').classList.add('hidden');
+                showToast('Access granted', 'success');
+                loadImages();
+                loadHistory();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        function switchTab(tab) {
+            const galleryView = document.getElementById('gallery-view');
+            const historyView = document.getElementById('history-view');
+            const tabGallery = document.getElementById('tab-gallery');
+            const tabHistory = document.getElementById('tab-history');
+            const pageTitle = document.getElementById('page-title');
+            const navGallery = document.getElementById('nav-gallery');
+            const navHistory = document.getElementById('nav-history');
+
+            if (tab === 'gallery') {
+                galleryView.classList.remove('hidden');
+                historyView.classList.add('hidden');
+                tabGallery.className = 'tab-active pb-3 px-1 font-medium flex items-center gap-2 transition-colors';
+                tabHistory.className = 'tab-inactive pb-3 px-1 font-medium flex items-center gap-2 transition-colors';
+                pageTitle.textContent = 'Image Gallery';
+                navGallery.classList.add('text-primary');
+                navGallery.classList.remove('text-slate-400');
+                navHistory.classList.remove('text-primary');
+                navHistory.classList.add('text-slate-400');
+            } else {
+                galleryView.classList.add('hidden');
+                historyView.classList.remove('hidden');
+                tabGallery.className = 'tab-inactive pb-3 px-1 font-medium flex items-center gap-2 transition-colors';
+                tabHistory.className = 'tab-active pb-3 px-1 font-medium flex items-center gap-2 transition-colors';
+                pageTitle.textContent = 'Download History';
+                navGallery.classList.remove('text-primary');
+                navGallery.classList.add('text-slate-400');
+                navHistory.classList.add('text-primary');
+                navHistory.classList.remove('text-slate-400');
+            }
+        }
+
+        async function loadImages() {
+            try {
+                const path = '/api/images/';
+                const headers = await getAuthHeaders(path);
+                const response = await fetch(path, { headers });
+                if (!response.ok) {
+                    if (response.status === 401) logout();
+                    throw new Error('Failed to load images');
+                }
+                images = await response.json();
+                renderGallery();
+            } catch (error) {
+                document.getElementById('gallery-grid').innerHTML = `
+                    <div class="col-span-full text-center py-12 text-red-400">
+                        <span class="material-symbols-outlined text-4xl mb-2">error</span>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function escapeHTML(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function renderGallery() {
+            const grid = document.getElementById('gallery-grid');
+            if (images.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-full text-center py-12 text-slate-500">
+                        <span class="material-symbols-outlined text-4xl mb-2">photo_library</span>
+                        <p>No images available</p>
+                    </div>
+                `;
+                return;
+            }
+            grid.innerHTML = images.map(img => `
+                <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-primary/50 transition-all group">
+                    <div class="aspect-video bg-slate-800 flex items-center justify-center overflow-hidden">
+                        <span class="material-symbols-outlined text-4xl text-slate-600 group-hover:text-primary transition-colors">image</span>
+                    </div>
+                    <div class="p-4">
+                        <p class="font-medium truncate text-sm mb-3">${escapeHTML(img.filename)}</p>
+                        <button onclick="downloadImage('${img.id}', '${escapeHTML(img.filename)}')" 
+                            class="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2">
+                            <span class="material-symbols-outlined text-sm">download</span>
+                            Download
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function downloadImage(imageId, filename) {
+            try {
+                showToast('Preparing secure download...', 'info');
+                const path = `/api/images/${imageId}/download`;
+                const headers = await getAuthHeaders(path);
+                const response = await fetch(path, { headers });
+                if (!response.ok) throw new Error('Download failed');
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `watermarked_${filename}`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+                
+                addToHistory(filename);
+                showToast('Image downloaded successfully', 'success');
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        function addToHistory(filename) {
+            const entry = {
+                filename,
+                timestamp: new Date().toISOString(),
+                status: 'Success'
+            };
+            history.unshift(entry);
+            renderHistory();
+            saveHistory();
+        }
+
+        function renderHistory() {
+            const tbody = document.getElementById('history-table');
+            if (history.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="px-6 py-8 text-center text-slate-500">
+                            <span class="material-symbols-outlined text-4xl mb-2">history</span>
+                            <p>No download history yet</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            tbody.innerHTML = history.map(item => `
+                <tr class="hover:bg-slate-800/30 transition-colors">
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center">
+                                <span class="material-symbols-outlined text-slate-500">image</span>
+                            </div>
+                            <span class="font-medium text-sm">${item.filename}</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-slate-400">${new Date(item.timestamp).toLocaleString()}</td>
+                    <td class="px-6 py-4">
+                        <span class="inline-flex items-center gap-1 text-xs font-medium text-green-400 bg-green-400/10 px-2 py-1 rounded">
+                            <span class="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+                            ${item.status}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        <button class="text-slate-400 hover:text-primary transition-colors">
+                            <span class="material-symbols-outlined">refresh</span>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function saveHistory() {
+            localStorage.setItem('download_history', JSON.stringify(history));
+        }
+
+        function loadHistory() {
+            const saved = localStorage.getItem('download_history');
+            if (saved) {
+                history = JSON.parse(saved);
+                renderHistory();
+            }
+        }
+
+        async function logout() {
+            try { 
+                const path = '/api/auth/logout';
+                const headers = await getAuthHeaders(path);
+                await fetch(path, { method: 'POST', headers }); 
+            } catch (e) {}
+            localStorage.removeItem('is_logged_in');
+            localStorage.removeItem('signing_key');
+            showToast('Signed out successfully', 'info');
+            setTimeout(() => window.location.href = '/', 500);
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            
+            const colors = {
+                success: 'bg-primary border-primary/20 text-white',
+                error: 'bg-red-500 border-red-500/20 text-white',
+                info: 'bg-slate-800 border-slate-700 text-slate-200'
+            };
+
+            const icons = {
+                success: 'check_circle',
+                error: 'error',
+                info: 'info'
+            };
+
+            toast.className = `${colors[type]} border px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 min-w-[300px] toast-animate`;
+            toast.innerHTML = `
+                <span class="material-symbols-outlined">${icons[type]}</span>
+                <span class="font-medium">${message}</span>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                toast.style.transition = 'all 0.3s ease-in';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (IS_LOGGED_IN) {
+                document.getElementById('login-overlay').classList.add('hidden');
+                loadImages();
+                loadHistory();
+            }
+        });
+    </script>
+</body>
+
+</html>

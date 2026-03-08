@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>InvisID Investigation Lab - Admin View</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#10b77f",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#0f172a",
+                        "neutral-dark": "#1e293b",
+                        "accent-amber": "#f59e0b",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .sidebar-item-active { background-color: rgba(16, 183, 127, 0.15); border-left: 4px solid #10b77f; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast-animate { animation: slideIn 0.3s ease-out forwards; }
+
+        @media print {
+            aside, header, #drop-zone, .toast-animate, button, #toast-container { display: none !important; }
+            main { padding: 0 !important; overflow: visible !important; }
+            #result-card { display: block !important; width: 100% !important; margin: 0 !important; }
+            body { background: white !important; color: black !important; }
+            .bg-slate-900 { border: 1px solid #ccc !important; box-shadow: none !important; }
+            .text-primary { color: #10b77f !important; }
+            .text-slate-400, .text-slate-500 { color: #666 !important; }
+        }
+    </style>
+</head>
+<body class="bg-background-dark text-slate-100 min-h-screen flex overflow-hidden">
+    <div id="toast-container" class="fixed bottom-8 right-8 z-[100] flex flex-col gap-3"></div>
+    <div id="login-overlay" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
+            <div class="text-center mb-8">
+                <div class="bg-primary rounded-xl p-3 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                    <span class="material-symbols-outlined text-4xl text-white">admin_panel_settings</span>
+                </div>
+                <h1 class="text-2xl font-bold">Admin Lab</h1>
+                <p class="text-slate-400 mt-2">Enter Admin API Key</p>
+            </div>
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <input type="password" id="api-key-input" required
+                    class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                    placeholder="Enter Admin API Key">
+                <button type="submit" class="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-lg font-bold">
+                    Access Admin Lab
+                </button>
+            </form>
+            <div class="mt-6 pt-6 border-t border-slate-700">
+                <a href="/" class="flex items-center justify-center gap-2 text-slate-400 hover:text-white transition-colors text-sm">
+                    <span class="material-symbols-outlined text-sm">arrow_back</span>
+                    Return to Home
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <aside class="w-64 border-r border-slate-800 flex flex-col bg-slate-900/50 hidden md:flex">
+        <div class="p-6 flex items-center gap-3">
+            <div class="bg-primary rounded-lg p-2 text-white"><span class="material-symbols-outlined block">shield_lock</span></div>
+            <h1 class="font-display font-bold text-xl tracking-tight text-primary">InvisID</h1>
+        </div>
+        <nav class="flex-1 px-4 space-y-2 mt-4">
+            <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin">
+                <span class="material-symbols-outlined">dashboard</span>
+                <span class="font-medium">Dashboard</span>
+            </a>
+            <a class="sidebar-item-active flex items-center gap-3 px-4 py-3 rounded-lg text-primary transition-colors" href="/admin/investigate">
+                <span class="material-symbols-outlined">search_check</span>
+                <span class="font-medium">Investigations</span>
+            </a>
+            <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin/audit-logs">
+                <span class="material-symbols-outlined">history_edu</span>
+                <span class="font-medium">Audit Logs</span>
+            </a>
+        </nav>
+    </aside>
+
+    <main class="flex-1 flex flex-col overflow-y-auto">
+        <header class="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-10">
+            <div class="flex items-center gap-2 text-primary font-semibold">
+                <span class="material-symbols-outlined">verified_user</span>
+                <span>Admin Session: Active</span>
+            </div>
+            <button onclick="logout()" class="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all text-sm font-bold border border-red-500/20 shadow-lg shadow-red-500/10">
+                <span class="material-symbols-outlined text-sm">logout</span> Sign Out
+            </button>
+        </header>
+
+        <div class="p-8 max-w-6xl mx-auto w-full space-y-8">
+            <div>
+                <h2 class="text-3xl font-bold tracking-tight">Investigation Lab</h2>
+                <p class="text-slate-400 mt-1">Extract forensic watermarks and identify internal leak sources.</p>
+            </div>
+
+            <section class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="space-y-6">
+                    <div id="drop-zone" onclick="document.getElementById('file-input').click()"
+                        class="bg-slate-900 border-2 border-dashed border-slate-700 rounded-xl p-12 flex flex-col items-center justify-center text-center transition-all hover:border-primary/50 group cursor-pointer">
+                        <div class="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-4 group-hover:scale-110 transition-transform">
+                            <span class="material-symbols-outlined text-3xl">upload_file</span>
+                        </div>
+                        <h3 class="text-xl font-bold mb-2">Leaked Image Analysis</h3>
+                        <p class="text-slate-400 text-sm max-w-xs mb-6">Drag and drop or click to upload the suspected leak for watermark extraction.</p>
+                        <input type="file" id="file-input" class="hidden" accept="image/*" onchange="startInvestigation(event)">
+                        <button class="bg-primary hover:bg-primary/90 text-white px-6 py-2.5 rounded-lg font-bold transition-all shadow-lg shadow-primary/20">
+                            Upload Image
+                        </button>
+                    </div>
+
+                    <div id="processing-card" class="bg-slate-900 border border-slate-800 rounded-xl p-6 hidden">
+                        <div class="flex items-center justify-between mb-4">
+                            <h4 class="font-bold flex items-center gap-2">
+                                <span class="material-symbols-outlined text-accent-amber animate-pulse">vital_signs</span>
+                                Processing Engine
+                            </h4>
+                            <span class="text-xs font-mono text-accent-amber bg-accent-amber/10 px-2 py-1 rounded">ANALYZING</span>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="flex justify-between text-sm font-medium">
+                                <span class="text-slate-300" id="engine-status">Watermark Extraction</span>
+                                <span class="text-accent-amber" id="progress-percent">0%</span>
+                            </div>
+                            <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                                <div id="progress-bar" class="bg-accent-amber h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                            <div class="flex items-center gap-2 text-xs text-slate-500 italic">
+                                <span class="material-symbols-outlined text-xs animate-spin">sync</span>
+                                Analyzing frequency domains for spatial-temporal markers...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="result-card" class="space-y-6 hidden">
+                    <div class="bg-primary/5 border border-primary/20 rounded-xl p-1 overflow-hidden">
+                        <div class="bg-slate-900 rounded-lg p-6 shadow-2xl">
+                            <div class="flex items-start justify-between mb-8">
+                                <div>
+                                    <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Forensic Result</span>
+                                    <h3 class="text-2xl font-bold mt-1">Leak Identification</h3>
+                                </div>
+                                <div class="bg-green-500/10 text-green-500 p-2 rounded-lg">
+                                    <span class="material-symbols-outlined text-3xl">verified_user</span>
+                                </div>
+                            </div>
+
+                            <!-- Forensic Heatmap Visualization -->
+                            <div class="mb-8 relative group">
+                                <div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center backdrop-blur-[1px]">
+                                    <span class="text-white font-bold text-xs uppercase tracking-widest bg-black/50 px-3 py-1 rounded">Forensic Layer Active</span>
+                                </div>
+                                <div class="aspect-video bg-slate-800 rounded-lg overflow-hidden flex items-center justify-center relative border border-slate-700">
+                                    <span class="material-symbols-outlined text-5xl text-slate-700">image</span>
+                                    <!-- Simulated Heatmap Layer -->
+                                    <div id="heatmap-overlay" class="absolute inset-0 opacity-40 mix-blend-screen" style="background-image: url('data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E'); filter: hue-rotate(90deg) contrast(150%);"></div>
+                                </div>
+                                <p class="text-[10px] text-slate-500 mt-2 text-center italic">Frequency-domain watermark distribution detected across spatial markers.</p>
+                            </div>
+
+                            <div class="space-y-6 font-mono">
+                                <div class="flex justify-between items-end border-b border-slate-800 pb-3">
+                                    <span class="text-slate-500 text-xs uppercase tracking-wider">Leaker ID</span>
+                                    <span id="res-leaker-id" class="text-xl text-primary font-bold">---</span>
+                                </div>
+                                <div class="flex justify-between items-end border-b border-slate-800 pb-3">
+                                    <span class="text-slate-500 text-xs uppercase tracking-wider">Confidence Score</span>
+                                    <span id="res-confidence" class="text-primary font-bold">0%</span>
+                                </div>
+                                <div class="flex justify-between items-end border-b border-slate-800 pb-3">
+                                    <span class="text-slate-500 text-xs uppercase tracking-wider">Extraction Time</span>
+                                    <span id="res-timestamp" class="text-slate-200">---</span>
+                                </div>
+                            </div>
+                            <div class="mt-10 grid grid-cols-2 gap-4">
+                                <button onclick="window.print()" class="bg-slate-800 text-slate-300 py-3 rounded-lg font-bold text-sm hover:bg-slate-700 transition-all border border-slate-700 flex items-center justify-center gap-2">
+                                    <span class="material-symbols-outlined text-sm">print</span>
+                                    Print Report
+                                </button>
+                                <button onclick="window.location.reload()" class="bg-primary text-white py-3 rounded-lg font-bold text-sm hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+                                    New Investigation
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        let IS_LOGGED_IN = localStorage.getItem('admin_logged_in') === 'true';
+        let SIGNING_KEY = localStorage.getItem('signing_key') || '';
+
+        async function generateSignature(path, timestamp) {
+            const msg = `${timestamp}${path}`;
+            const enc = new TextEncoder();
+            const key = await crypto.subtle.importKey(
+                "raw", enc.encode(SIGNING_KEY),
+                { name: "HMAC", hash: "SHA-256" },
+                false, ["sign"]
+            );
+            const signature = await crypto.subtle.sign("HMAC", key, enc.encode(msg));
+            return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function getAuthHeaders(path) {
+            const timestamp = (Date.now() / 1000).toString();
+            const signature = await generateSignature(path, timestamp);
+            return {
+                'X-Timestamp': timestamp,
+                'X-Signature': signature
+            };
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+            const apiKey = document.getElementById('api-key-input').value.trim();
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_key: apiKey })
+                });
+                
+                if (!response.ok) throw new Error('Invalid Admin Key');
+                const data = await response.json();
+                if (data.role !== 'admin') throw new Error('Admin privileges required');
+
+                localStorage.setItem('admin_logged_in', 'true');
+                localStorage.setItem('signing_key', data.signing_key);
+                SIGNING_KEY = data.signing_key;
+
+                document.getElementById('login-overlay').classList.add('hidden');
+                showToast('Admin access granted', 'success');
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        async function logout() {
+            try { 
+                const path = '/api/auth/logout';
+                const headers = await getAuthHeaders(path);
+                await fetch(path, { method: 'POST', headers }); 
+            } catch (e) {}
+            localStorage.removeItem('admin_logged_in');
+            localStorage.removeItem('signing_key');
+            showToast('Signed out successfully', 'info');
+            setTimeout(() => window.location.href = '/', 500);
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            
+            const colors = {
+                success: 'bg-primary border-primary/20 text-white',
+                error: 'bg-red-500 border-red-500/20 text-white',
+                info: 'bg-slate-800 border-slate-700 text-slate-200'
+            };
+
+            const icons = {
+                success: 'check_circle',
+                error: 'error',
+                info: 'info'
+            };
+
+            toast.className = `${colors[type]} border px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 min-w-[300px] toast-animate`;
+            toast.innerHTML = `
+                <span class="material-symbols-outlined">${icons[type]}</span>
+                <span class="font-medium">${message}</span>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                toast.style.transition = 'all 0.3s ease-in';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        async function startInvestigation(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            document.getElementById('processing-card').classList.remove('hidden');
+            document.getElementById('drop-zone').classList.add('hidden');
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                showToast('Uploading suspected leak for analysis...', 'info');
+                const path = '/api/investigate';
+                const headers = await getAuthHeaders(path);
+                const response = await fetch(path, {
+                    method: 'POST',
+                    headers: headers,
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error('Investigation failed to start');
+                const data = await response.json();
+                showToast('Investigation job created: ' + data.job_id, 'success');
+                pollJob(data.job_id);
+            } catch (error) {
+                showToast(error.message, 'error');
+                document.getElementById('processing-card').classList.add('hidden');
+                document.getElementById('drop-zone').classList.remove('hidden');
+            }
+        }
+
+        async function pollJob(jobId) {
+            let progress = 0;
+            const bar = document.getElementById('progress-bar');
+            const percentLabel = document.getElementById('progress-percent');
+
+            const interval = setInterval(async () => {
+                try {
+                    const path = `/api/jobs/${jobId}`;
+                    const headers = await getAuthHeaders(path);
+                    const response = await fetch(path, { headers });
+                    const job = await response.json();
+
+                    if (job.status === 'completed') {
+                        clearInterval(interval);
+                        progress = 100;
+                        bar.style.width = '100%';
+                        percentLabel.textContent = '100%';
+                        showResult(job.result);
+                    } else if (job.status === 'failed') {
+                        clearInterval(interval);
+                        showToast('Investigation failed: ' + job.error, 'error');
+                    } else {
+                        // Fake progress for UI feel
+                        progress = Math.min(progress + 5, 95);
+                        bar.style.width = `${progress}%`;
+                        percentLabel.textContent = `${progress}%`;
+                    }
+                } catch (error) {
+                    console.error('Polling error:', error);
+                }
+            }, 1000);
+        }
+
+        function showResult(result) {
+            document.getElementById('processing-card').classList.add('hidden');
+            document.getElementById('result-card').classList.remove('hidden');
+
+            document.getElementById('res-leaker-id').textContent = result.leaked_by;
+            document.getElementById('res-confidence').textContent = (result.confidence * 100).toFixed(1) + '%';
+            document.getElementById('res-timestamp').textContent = new Date(result.extraction_timestamp * 1000).toLocaleString();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (IS_LOGGED_IN) {
+                document.getElementById('login-overlay').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
