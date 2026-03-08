@@ -1,8 +1,26 @@
 from imwatermark import WatermarkEncoder, WatermarkDecoder
 import cv2
-import re
 
 PAYLOAD_SIZE = 64
+
+# simple XOR key
+KEY = 23
+
+
+def encrypt_employee_id(emp_id: str) -> str:
+    """
+    Encrypt employee ID using XOR cipher
+    """
+    encrypted = "".join(chr(ord(c) ^ KEY) for c in emp_id)
+    return encrypted
+
+
+def decrypt_employee_id(cipher: str) -> str:
+    """
+    Decrypt XOR cipher
+    """
+    decrypted = "".join(chr(ord(c) ^ KEY) for c in cipher)
+    return decrypted
 
 
 def embed_watermark(input_path: str, watermark_data: str, output_path: str) -> str:
@@ -14,15 +32,21 @@ def embed_watermark(input_path: str, watermark_data: str, output_path: str) -> s
 
     encoder = WatermarkEncoder()
 
-    # Repeat watermark to strengthen signal
-    payload = (watermark_data + "|") * 10
+    # encrypt employee id
+    encrypted_id = encrypt_employee_id(watermark_data)
+
+    print("EMPLOYEE ID:", watermark_data)
+    print("ENCRYPTED WATERMARK:", encrypted_id)
+
+    # repeat payload for robustness
+    payload = (encrypted_id + "|") * 10
     payload = payload[:PAYLOAD_SIZE]
 
     encoder.set_watermark("bytes", payload.encode())
 
     watermarked = encoder.encode(img, "dwtDctSvd")
 
-    print("WATERMARK EMBEDDED:", watermark_data)
+    print("WATERMARK EMBEDDED")
 
     cv2.imwrite(output_path, watermarked)
 
@@ -45,17 +69,22 @@ def extract_watermark(image_path: str) -> str:
 
     print("RAW WATERMARK:", decoded)
 
-    matches = re.findall(r"EMP-\d+", decoded)
+    parts = decoded.split("|")
+    parts = [p for p in parts if p.strip()]
 
-    if matches:
+    if not parts:
+        print("NO WATERMARK FOUND")
+        return ""
 
-        # majority vote
-        employee_id = max(set(matches), key=matches.count)
+    # majority voting
+    encrypted_id = max(set(parts), key=parts.count)
 
-        print("EXTRACTED EMPLOYEE:", employee_id)
+    print("EXTRACTED ENCRYPTED WATERMARK:", encrypted_id)
 
+    try:
+        employee_id = decrypt_employee_id(encrypted_id)
+        print("DECRYPTED EMPLOYEE:", employee_id)
         return employee_id
-
-    print("NO EMPLOYEE ID FOUND")
-
-    return ""
+    except Exception:
+        print("DECRYPTION FAILED")
+        return ""
