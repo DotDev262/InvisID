@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>InvisID Trash Lab - Admin View</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#10b77f",
+                        "background-dark": "#0f172a",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                    },
+                },
+            },
+        }
+    </script>
+    <style>
+        .sidebar-item-active { background-color: rgba(16, 183, 127, 0.15); border-left: 4px solid #10b77f; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast-animate { animation: slideIn 0.3s ease-out forwards; }
+    </style>
+</head>
+<body class="bg-background-dark text-slate-100 min-h-screen flex">
+    <div id="toast-container" class="fixed bottom-8 right-8 z-[100] flex flex-col gap-3"></div>
+    <div id="login-overlay" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
+            <div class="text-center mb-8">
+                <div class="bg-primary rounded-xl p-3 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                    <span class="material-symbols-outlined text-4xl text-white">admin_panel_settings</span>
+                </div>
+                <h1 class="text-2xl font-bold">Admin Lab</h1>
+                <p class="text-slate-400 mt-2">Enter Admin API Key</p>
+            </div>
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <input type="password" id="api-key-input" required
+                    class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                    placeholder="Enter Admin API Key">
+                <button type="submit" class="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-lg font-bold">
+                    Access Admin Lab
+                </button>
+            </form>
+            <div class="mt-6 pt-6 border-t border-slate-700">
+                <a href="/" class="flex items-center justify-center gap-2 text-slate-400 hover:text-white transition-colors text-sm">
+                    <span class="material-symbols-outlined text-sm">arrow_back</span>
+                    Return to Home
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <aside class="w-64 border-r border-slate-800 flex flex-col bg-slate-900/50 hidden md:flex">
+        <div class="p-6 flex items-center gap-3">
+            <div class="bg-primary rounded-lg p-2 text-white"><span class="material-symbols-outlined block">shield_lock</span></div>
+            <h1 class="font-display font-bold text-xl tracking-tight text-primary">InvisID</h1>
+        </div>
+        <nav class="flex-1 px-4 space-y-2 mt-4">
+            <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin">
+                <span class="material-symbols-outlined">dashboard</span>
+                <span class="font-medium">Dashboard</span>
+            </a>
+            <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin/investigate">
+                <span class="material-symbols-outlined">search_check</span>
+                <span class="font-medium">Investigations</span>
+            </a>
+            <a class="sidebar-item-active flex items-center gap-3 px-4 py-3 rounded-lg text-primary transition-colors" href="/admin/trash">
+                <span class="material-symbols-outlined">delete</span>
+                <span class="font-medium">Trash Lab</span>
+            </a>
+            <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin/stress-test">
+                <span class="material-symbols-outlined">experiment</span>
+                <span class="font-medium">Stress-Test Lab</span>
+            </a>
+            <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin/audit-logs">
+                <span class="material-symbols-outlined">history_edu</span>
+                <span class="font-medium">Audit Logs</span>
+            </a>
+        </nav>
+    </aside>
+
+    <main class="flex-1 flex flex-col overflow-y-auto">
+        <header class="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-10">
+            <div class="flex items-center gap-2 text-primary font-semibold">
+                <span class="material-symbols-outlined">delete</span>
+                <span>Trash Lab</span>
+            </div>
+            <button onclick="logout()" class="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all text-sm font-bold border border-red-500/20 shadow-lg shadow-red-500/10">
+                <span class="material-symbols-outlined text-sm">logout</span> Sign Out
+            </button>
+        </header>
+
+        <div class="p-8 max-w-6xl mx-auto w-full space-y-8">
+            <div class="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                <div>
+                    <h2 class="text-3xl font-bold tracking-tight">Trash Lab</h2>
+                    <p class="text-slate-400 mt-1">Manage deleted assets. Items are permanently removed after 30 days.</p>
+                </div>
+                <div class="relative w-full md:w-72">
+                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">search</span>
+                    <input type="text" id="trash-search" oninput="filterTrash()" placeholder="Search trashed assets..." 
+                        class="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:border-primary focus:outline-none transition-all">
+                </div>
+            </div>
+
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-xl font-bold flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary">delete_forever</span>
+                        Deleted Assets
+                    </h3>
+                    <button onclick="loadTrash()" class="text-slate-400 hover:text-primary transition-colors">
+                        <span class="material-symbols-outlined">refresh</span>
+                    </button>
+                </div>
+                
+                <div id="trash-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Items loaded via JS -->
+                    <div class="col-span-full text-center py-12 text-slate-500">
+                        <span class="material-symbols-outlined text-4xl mb-2">hourglass_empty</span>
+                        <p>Loading trash...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let IS_LOGGED_IN = localStorage.getItem('admin_logged_in') === 'true';
+        let SIGNING_KEY = localStorage.getItem('signing_key') || '';
+        let allTrash = [];
+        let displayedTrash = [];
+
+        async function generateSignature(path, timestamp) {
+            const msg = `${timestamp}${path}`;
+            const enc = new TextEncoder();
+            const key = await crypto.subtle.importKey(
+                "raw", enc.encode(SIGNING_KEY),
+                { name: "HMAC", hash: "SHA-256" },
+                false, ["sign"]
+            );
+            const signature = await crypto.subtle.sign("HMAC", key, enc.encode(msg));
+            return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function getAuthHeaders(path) {
+            const timestamp = (Date.now() / 1000).toString();
+            const signature = await generateSignature(path, timestamp);
+            return {
+                'X-Timestamp': timestamp,
+                'X-Signature': signature
+            };
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+            const apiKey = document.getElementById('api-key-input').value.trim();
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_key: apiKey })
+                });
+                
+                if (!response.ok) throw new Error('Invalid Admin Key');
+                const data = await response.json();
+                if (data.role !== 'admin') throw new Error('Admin privileges required');
+
+                localStorage.setItem('admin_logged_in', 'true');
+                localStorage.setItem('signing_key', data.signing_key);
+                SIGNING_KEY = data.signing_key;
+
+                document.getElementById('login-overlay').classList.add('hidden');
+                showToast('Admin access granted', 'success');
+                loadTrash();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        async function logout() {
+            try { 
+                const path = '/api/auth/logout';
+                const headers = await getAuthHeaders(path);
+                await fetch(path, { method: 'POST', headers }); 
+            } catch (e) {}
+            localStorage.removeItem('admin_logged_in');
+            localStorage.removeItem('signing_key');
+            showToast('Signed out successfully', 'info');
+            setTimeout(() => window.location.href = '/', 500);
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            
+            const colors = {
+                success: 'bg-primary border-primary/20 text-white',
+                error: 'bg-red-500 border-red-500/20 text-white',
+                info: 'bg-slate-800 border-slate-700 text-slate-200'
+            };
+
+            const icons = {
+                success: 'check_circle',
+                error: 'error',
+                info: 'info'
+            };
+
+            toast.className = `${colors[type]} border px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 min-w-[300px] toast-animate`;
+            toast.innerHTML = `
+                <span class="material-symbols-outlined">${icons[type]}</span>
+                <span class="font-medium">${message}</span>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                toast.style.transition = 'all 0.3s ease-in';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        async function loadTrash() {
+            try {
+                const path = '/api/admin/trash';
+                const headers = await getAuthHeaders(path);
+                const response = await fetch(path, { headers });
+                if (!response.ok) throw new Error('Failed to load trash');
+                allTrash = await response.json();
+                displayedTrash = [...allTrash];
+                await renderTrash();
+            } catch (error) {
+                document.getElementById('trash-grid').innerHTML = `<p class="text-red-400 col-span-full text-center py-12">${error.message}</p>`;
+            }
+        }
+
+        function filterTrash() {
+            const query = document.getElementById('trash-search').value.toLowerCase().trim();
+            if (!query) {
+                displayedTrash = [...allTrash];
+            } else {
+                displayedTrash = allTrash.filter(img => 
+                    img.filename.toLowerCase().includes(query) || 
+                    img.id.toLowerCase().includes(query)
+                );
+            }
+            renderTrash();
+        }
+
+        function escapeHTML(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        async function renderTrash() {
+            const grid = document.getElementById('trash-grid');
+            if (displayedTrash.length === 0) {
+                grid.innerHTML = `<p class="col-span-full text-center py-12 text-slate-500">${allTrash.length === 0 ? 'Trash is empty.' : 'No matching deleted assets found.'}</p>`;
+                return;
+            }
+
+            const trashItems = await Promise.all(displayedTrash.map(async img => {
+                const previewPath = `/api/images/${img.id}/preview`;
+                const headers = await getAuthHeaders(previewPath);
+                
+                // Fetch the image as a blob to include auth headers
+                const response = await fetch(previewPath, { headers });
+                let imgSrc = "";
+                if (response.ok) {
+                    const blob = await response.blob();
+                    imgSrc = URL.createObjectURL(blob);
+                }
+
+                return `
+                    <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 flex flex-col gap-4 group transition-all hover:border-red-500/20">
+                        <div class="flex items-center gap-4">
+                            <div class="w-14 h-14 bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden border border-slate-700 grayscale hover:grayscale-0 transition-all">
+                                ${imgSrc ? 
+                                    `<img src="${imgSrc}" class="w-full h-full object-cover" alt="preview">` : 
+                                    `<span class="material-symbols-outlined text-slate-500 text-xl">image</span>`
+                                }
+                            </div>
+                            <div class="flex-1 overflow-hidden">
+                                <p class="text-sm font-medium truncate text-slate-200">${escapeHTML(img.filename)}</p>
+                                <p class="text-[9px] text-red-400 font-bold uppercase tracking-wider mt-0.5">Expires in 30 days</p>
+                                <p class="text-[9px] text-slate-500 mt-0.5">Deleted: ${new Date(img.deleted_at).toLocaleString()}</p>
+                            </div>
+                        </div>
+                        <button onclick="restoreImage('${img.id}')" class="w-full bg-primary/10 hover:bg-primary text-primary hover:text-white py-2 rounded-lg font-bold text-xs transition-all border border-primary/20 flex items-center justify-center gap-2">
+                            <span class="material-symbols-outlined text-sm">restore</span> Restore Asset
+                        </button>
+                    </div>
+                `;
+            }));
+
+            grid.innerHTML = trashItems.join('');
+        }
+
+        async function restoreImage(imageId) {
+            try {
+                const path = `/api/admin/images/${imageId}/restore`;
+                const headers = await getAuthHeaders(path);
+                const response = await fetch(path, { method: 'POST', headers });
+                if (!response.ok) throw new Error('Restore failed');
+                showToast('Asset restored to library', 'success');
+                loadTrash();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (IS_LOGGED_IN) {
+                document.getElementById('login-overlay').classList.add('hidden');
+                loadTrash();
+            }
+        });
+    </script>
+</body>
+</html>

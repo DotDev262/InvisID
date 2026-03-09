@@ -3,7 +3,8 @@
 import hashlib
 import time
 
-from fastapi import HTTPException, Request
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import get_settings
@@ -12,6 +13,11 @@ settings = get_settings()
 
 # Simple in-memory rate limiter
 rate_limit_store: dict[str, list[float]] = {}
+
+def clear_rate_limits():
+    """Helper for tests to reset state."""
+    global rate_limit_store
+    rate_limit_store.clear()
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -47,9 +53,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Check limit
         if len(rate_limit_store.get(key_hash, [])) >= settings.RATE_LIMIT_PER_MINUTE:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=429,
-                detail="Rate limit exceeded. Max 10 requests/minute."
+                content={"detail": f"Rate limit exceeded. Max {settings.RATE_LIMIT_PER_MINUTE} requests/minute."}
             )
 
         # Add current request

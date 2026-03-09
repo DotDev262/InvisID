@@ -33,7 +33,7 @@
         .toast-animate { animation: slideIn 0.3s ease-out forwards; }
     </style>
 </head>
-<body class="bg-background-dark text-slate-100 min-h-screen flex overflow-hidden">
+<body class="bg-background-dark text-slate-100 min-h-screen flex">
     <div id="toast-container" class="fixed bottom-8 right-8 z-[100] flex flex-col gap-3"></div>
     <div id="login-overlay" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
         <div class="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
@@ -74,6 +74,14 @@
             <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin/investigate">
                 <span class="material-symbols-outlined">search_check</span>
                 <span class="font-medium">Investigations</span>
+            </a>
+            <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin/trash">
+                <span class="material-symbols-outlined">delete</span>
+                <span class="font-medium">Trash Lab</span>
+            </a>
+            <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin/stress-test">
+                <span class="material-symbols-outlined">experiment</span>
+                <span class="font-medium">Stress-Test Lab</span>
             </a>
             <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin/audit-logs">
                 <span class="material-symbols-outlined">history_edu</span>
@@ -134,7 +142,7 @@
                     </div>
                     <div class="flex items-baseline gap-2">
                         <span class="text-3xl font-mono font-bold" id="metric-assets">--</span>
-                        <span class="text-xs text-green-500 font-medium">+12%</span>
+                        <span class="text-xs text-green-500 font-medium" id="trend-assets">+0%</span>
                     </div>
                 </div>
                 <div class="bg-slate-800/50 border border-slate-700 p-5 rounded-2xl">
@@ -149,29 +157,29 @@
                 </div>
                 <div class="bg-slate-800/50 border border-slate-700 p-5 rounded-2xl">
                     <div class="flex items-center gap-3 text-slate-400 mb-3">
-                        <span class="material-symbols-outlined text-red-500">block</span>
-                        <span class="text-xs font-bold uppercase tracking-wider">Threats Blocked</span>
+                        <span class="material-symbols-outlined text-red-500">biotech</span>
+                        <span class="text-xs font-bold uppercase tracking-wider">Investigations</span>
                     </div>
                     <div class="flex items-baseline gap-2">
-                        <span class="text-3xl font-mono font-bold">14</span>
-                        <span class="text-[10px] text-red-400 animate-pulse">Rate Limit Active</span>
+                        <span class="text-3xl font-mono font-bold" id="metric-logs">--</span>
+                        <span class="text-xs text-green-500 font-medium" id="trend-logs">+0%</span>
                     </div>
                 </div>
                 <div class="bg-slate-800/50 border border-slate-700 p-5 rounded-2xl">
                     <div class="flex items-center gap-3 text-slate-400 mb-3">
-                        <span class="material-symbols-outlined text-blue-500">cleaning_services</span>
-                        <span class="text-xs font-bold uppercase tracking-wider">Metadata Stripped</span>
+                        <span class="material-symbols-outlined text-blue-500">delete</span>
+                        <span class="text-xs font-bold uppercase tracking-wider">Trash Lab</span>
                     </div>
                     <div class="flex items-baseline gap-2">
-                        <span class="text-3xl font-mono font-bold" id="metric-sanitized">--</span>
-                        <span class="text-[10px] text-slate-500">Privacy Enforced</span>
+                        <span class="text-3xl font-mono font-bold" id="metric-trash">--</span>
+                        <span class="text-xs text-amber-500 font-medium" id="trend-trash">+0%</span>
                     </div>
                 </div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <!-- Upload Section -->
-                <div class="lg:col-span-1">
+                <div class="lg:col-span-1 space-y-6">
                     <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6">
                         <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
                             <span class="material-symbols-outlined text-primary">cloud_upload</span>
@@ -195,26 +203,49 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Recent Activity Feed -->
+                    <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6">
+                        <h3 class="text-lg font-bold mb-6 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-primary text-sm">history</span>
+                            Recent Activity
+                        </h3>
+                        <div id="activity-feed" class="space-y-4">
+                            <!-- Items loaded via JS -->
+                            <p class="text-center py-4 text-slate-500 text-xs italic">No recent events.</p>
+                        </div>
+                        <a href="/admin/audit-logs" class="block text-center mt-6 text-[10px] font-bold text-slate-500 hover:text-primary uppercase tracking-widest transition-colors">View All Logs</a>
+                    </div>
                 </div>
 
                 <!-- Library Section -->
                 <div class="lg:col-span-2">
-                    <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 h-full">
-                        <div class="flex items-center justify-between mb-6">
-                            <h3 class="text-xl font-bold flex items-center gap-2">
-                                <span class="material-symbols-outlined text-primary">library_books</span>
-                                Master Library
-                            </h3>
-                            <button onclick="loadLibrary()" class="text-slate-400 hover:text-primary transition-colors">
-                                <span class="material-symbols-outlined">refresh</span>
-                            </button>
+                    <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 h-full flex flex-col">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                            <div>
+                                <h3 class="text-xl font-bold flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-primary">library_books</span>
+                                    Master Library
+                                </h3>
+                                <p class="text-xs text-slate-500 mt-1">Manage protected assets and their forensic metadata.</p>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div class="relative w-full sm:w-64">
+                                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">search</span>
+                                    <input type="text" id="library-search" oninput="filterLibrary()" placeholder="Search assets..." 
+                                        class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-4 py-2.5 text-xs focus:border-primary focus:outline-none transition-all">
+                                </div>
+                                <button onclick="loadLibrary()" class="bg-slate-900 border border-slate-700 p-2.5 rounded-lg text-slate-400 hover:text-primary transition-colors flex-shrink-0">
+                                    <span class="material-symbols-outlined text-sm">refresh</span>
+                                </button>
+                            </div>
                         </div>
                         
-                        <div id="library-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div id="library-grid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 flex-1">
                             <!-- Items loaded via JS -->
-                            <div class="col-span-full text-center py-12 text-slate-500">
-                                <span class="material-symbols-outlined text-4xl mb-2">hourglass_empty</span>
-                                <p>Loading library...</p>
+                            <div class="col-span-full text-center py-20 text-slate-500 border-2 border-dashed border-slate-700 rounded-2xl">
+                                <span class="material-symbols-outlined text-5xl mb-4 animate-pulse">hourglass_empty</span>
+                                <p>Initializing Master Library...</p>
                             </div>
                         </div>
                     </div>
@@ -226,6 +257,8 @@
     <script>
         let IS_LOGGED_IN = localStorage.getItem('admin_logged_in') === 'true';
         let SIGNING_KEY = localStorage.getItem('signing_key') || '';
+        let allMasters = [];
+        let displayedMasters = [];
 
         async function generateSignature(path, timestamp) {
             const msg = `${timestamp}${path}`;
@@ -265,6 +298,7 @@
 
                 localStorage.setItem('admin_logged_in', 'true');
                 localStorage.setItem('signing_key', data.signing_key);
+                localStorage.setItem('instance_id', data.instance_id);
                 SIGNING_KEY = data.signing_key;
 
                 document.getElementById('login-overlay').classList.add('hidden');
@@ -322,22 +356,170 @@
 
         async function loadLibrary() {
             try {
+                // Fetch Library
                 const path = '/api/images/';
                 const headers = await getAuthHeaders(path);
                 const response = await fetch(path, { headers });
+                
+                // Check for server restart
+                const serverId = response.headers.get('X-Instance-ID');
+                const localId = localStorage.getItem('instance_id');
+                if (serverId && localId && serverId !== localId) {
+                    showToast('Server session expired', 'error');
+                    setTimeout(logout, 1500);
+                    return;
+                }
+
                 if (!response.ok) {
                     if (response.status === 401) logout();
                     throw new Error('Failed to load library');
                 }
-                const images = await response.json();
-                renderLibrary(images);
+                allMasters = await response.json();
+                displayedMasters = [...allMasters];
+                await renderLibrary();
                 
-                // Update metrics
-                document.getElementById('metric-assets').textContent = images.length;
-                document.getElementById('metric-sanitized').textContent = images.length; // 1:1 for this demo
+                // Fetch Live Metrics
+                await loadMetrics();
             } catch (error) {
                 document.getElementById('library-grid').innerHTML = `<p class="text-red-400">${error.message}</p>`;
             }
+        }
+
+        async function loadMetrics() {
+            try {
+                const path = '/api/admin/metrics';
+                const headers = await getAuthHeaders(path);
+                const response = await fetch(path, { headers });
+                if (!response.ok) return;
+                const data = await response.json();
+
+                const elements = {
+                    'metric-assets': data.total_assets,
+                    'metric-logs': data.total_investigations,
+                    'metric-trash': data.trashed_assets,
+                    'metric-confidence': data.avg_confidence,
+                    'trend-assets': data.asset_trend,
+                    'trend-logs': data.investigation_trend,
+                    'trend-trash': data.trash_trend
+                };
+
+                for (const [id, val] of Object.entries(elements)) {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        el.textContent = val;
+                        // Color trends based on direction
+                        if (id.startsWith('trend-')) {
+                            if (val.startsWith('+')) {
+                                el.className = 'text-xs text-green-500 font-medium';
+                            } else if (val.startsWith('-')) {
+                                el.className = 'text-xs text-red-500 font-medium';
+                            } else {
+                                el.className = 'text-xs text-slate-500 font-medium';
+                            }
+                        }
+                    }
+                }
+
+                // Update Activity Feed
+                renderActivity(data.recent_activity);
+            } catch (e) { console.error("Metrics load failed", e); }
+        }
+
+        function renderActivity(logs) {
+            const container = document.getElementById('activity-feed');
+            if (!logs || logs.length === 0) {
+                container.innerHTML = '<p class="text-center py-8 text-slate-500 text-xs italic">No security events detected.</p>';
+                return;
+            }
+
+            container.innerHTML = logs.map(log => {
+                const colors = {
+                    'MASTER_UPLOAD': 'text-primary bg-primary/10 border-primary/20',
+                    'IMAGE_DOWNLOAD': 'text-blue-400 bg-blue-400/10 border-blue-400/20',
+                    'LEAK_INVESTIGATION': 'text-red-400 bg-red-400/10 border-red-400/20',
+                    'IMAGE_TRASHED': 'text-amber-500 bg-amber-500/10 border-amber-500/20',
+                    'IMAGE_RESTORED': 'text-green-400 bg-green-400/10 border-green-400/20'
+                };
+                const icon = {
+                    'MASTER_UPLOAD': 'upload_file',
+                    'IMAGE_DOWNLOAD': 'download',
+                    'LEAK_INVESTIGATION': 'biotech',
+                    'IMAGE_TRASHED': 'delete_sweep',
+                    'IMAGE_RESTORED': 'settings_backup_restore'
+                };
+                
+                const labels = {
+                    'MASTER_UPLOAD': 'Master Secured',
+                    'IMAGE_DOWNLOAD': 'Asset Accessed',
+                    'LEAK_INVESTIGATION': 'Forensic Lab',
+                    'IMAGE_TRASHED': 'Trash Queue',
+                    'IMAGE_RESTORED': 'Asset Restored'
+                };
+
+                return `
+                    <div class="flex items-start gap-4 p-3 rounded-xl hover:bg-slate-900/50 transition-colors group">
+                        <div class="mt-0.5 flex-shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center ${colors[log.event_type] || 'text-slate-400 bg-slate-800 border-slate-700'}">
+                            <span class="material-symbols-outlined text-[18px]">${icon[log.event_type] || 'info'}</span>
+                        </div>
+                        <div class="flex-1 overflow-hidden">
+                            <div class="flex items-center justify-between gap-2 mb-0.5">
+                                <span class="text-[10px] font-bold uppercase tracking-tight ${log.status === 'success' ? 'text-primary' : 'text-amber-500'}">${labels[log.event_type] || 'System Event'}</span>
+                                <span class="text-[9px] text-slate-500 font-mono">${new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            </div>
+                            <p class="text-xs font-medium text-slate-200 truncate mb-1">${escapeHTML(log.resource)}</p>
+                            <div class="flex items-center gap-1.5">
+                                <div class="w-1.5 h-1.5 rounded-full bg-slate-700"></div>
+                                <span class="text-[9px] font-mono text-slate-500 uppercase tracking-widest">${log.user_id}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Auto-refresh metrics every 30 seconds
+        setInterval(loadMetrics, 30000);
+
+        // Real-time server heartbeat
+        setInterval(async () => {
+            try {
+                const response = await fetch('/health', { cache: 'no-store' });
+                const serverId = response.headers.get('X-Instance-ID');
+                const localId = localStorage.getItem('instance_id');
+                
+                if (serverId && localId && serverId !== localId) {
+                    showToast('Server restarted - Invalidating session', 'error');
+                    localStorage.clear(); // Clear all state instantly
+                    setTimeout(() => window.location.href = '/', 1000);
+                    return;
+                }
+                
+                // If we reach here, server is up. Reset any offline warning.
+                const socHeader = document.querySelector('header span:last-child');
+                if (socHeader && socHeader.textContent.includes('OFFLINE')) {
+                    socHeader.innerHTML = 'ONLINE';
+                }
+            } catch (e) {
+                // Server is likely down
+                const socHeader = document.querySelector('header span:last-child');
+                if (socHeader && !socHeader.textContent.includes('OFFLINE')) {
+                    socHeader.innerHTML = '<span class="text-red-500 animate-pulse flex items-center gap-1"><span class="material-symbols-outlined text-xs">error</span> SERVER OFFLINE</span>';
+                    showToast('Connection lost: Server is unresponsive', 'error');
+                }
+            }
+        }, 2000);
+
+        function filterLibrary() {
+            const query = document.getElementById('library-search').value.toLowerCase().trim();
+            if (!query) {
+                displayedMasters = [...allMasters];
+            } else {
+                displayedMasters = allMasters.filter(img => 
+                    img.filename.toLowerCase().includes(query) || 
+                    img.id.toLowerCase().includes(query)
+                );
+            }
+            renderLibrary();
         }
 
         function escapeHTML(str) {
@@ -346,29 +528,81 @@
             return div.innerHTML;
         }
 
-        function renderLibrary(images) {
+        async function renderLibrary() {
             const grid = document.getElementById('library-grid');
-            if (images.length === 0) {
-                grid.innerHTML = '<p class="col-span-full text-center py-8 text-slate-500">No master images uploaded yet.</p>';
+            if (displayedMasters.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-full text-center py-20 text-slate-500 border-2 border-dashed border-slate-700 rounded-2xl">
+                        <span class="material-symbols-outlined text-5xl mb-4">${allMasters.length === 0 ? 'photo_library' : 'search_off'}</span>
+                        <p>${allMasters.length === 0 ? 'No master images uploaded yet.' : 'No matching masters found'}</p>
+                    </div>
+                `;
                 return;
             }
-            grid.innerHTML = images.map(img => `
-                <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 flex items-center gap-4 group">
-                    <div class="w-12 h-12 bg-slate-800 rounded-lg flex items-center justify-center">
-                        <span class="material-symbols-outlined text-slate-500">image</span>
-                    </div>
-                    <div class="flex-1 overflow-hidden">
-                        <p class="text-sm font-medium truncate">${escapeHTML(img.filename)}</p>
-                        <div class="flex items-center gap-2 mt-1">
-                            <span class="text-[10px] text-slate-500 font-mono">${escapeHTML(img.id)}</span>
-                            <span class="flex items-center gap-1 text-[9px] font-bold uppercase tracking-tighter text-primary bg-primary/10 px-1.5 py-0.5 rounded">
-                                <span class="material-symbols-outlined text-[10px]">verified_user</span>
-                                Hash Verified
-                            </span>
+
+            const libraryItems = await Promise.all(displayedMasters.map(async img => {
+                const previewPath = `/api/images/${img.id}/preview`;
+                const headers = await getAuthHeaders(previewPath);
+                
+                const response = await fetch(previewPath, { headers });
+                let imgSrc = "";
+                if (response.ok) {
+                    const blob = await response.blob();
+                    imgSrc = URL.createObjectURL(blob);
+                }
+
+                return `
+                    <div class="bg-slate-900/50 border border-slate-700 rounded-2xl overflow-hidden group hover:border-primary/50 transition-all shadow-lg hover:shadow-primary/5 flex flex-col h-fit">
+                        <div class="aspect-video bg-slate-800 relative overflow-hidden border-b border-slate-700">
+                            ${imgSrc ? 
+                                `<img src="${imgSrc}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="preview">` : 
+                                `<div class="w-full h-full flex items-center justify-center"><span class="material-symbols-outlined text-slate-600 text-4xl">image</span></div>`
+                            }
+                            <div class="absolute top-3 left-3 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md border border-white/10">
+                                <span class="text-[8px] font-bold text-white uppercase tracking-widest">Master Asset</span>
+                            </div>
+                            <div class="absolute inset-0 bg-gradient-to-t from-slate-900 to-transparent opacity-40"></div>
+                        </div>
+                        <div class="p-4 flex-1 flex flex-col justify-between">
+                            <div class="flex items-start justify-between gap-3 mb-3">
+                                <div class="flex-1 overflow-hidden">
+                                    <p class="text-xs font-bold truncate text-slate-100 mb-0.5">${escapeHTML(img.filename)}</p>
+                                    <p class="text-[9px] font-mono text-slate-500 truncate uppercase tracking-tighter">${escapeHTML(img.id)}</p>
+                                </div>
+                                <button onclick="trashImage('${img.id}')" class="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white p-1.5 rounded-lg transition-all border border-red-500/20 flex-shrink-0">
+                                    <span class="material-symbols-outlined text-[16px]">delete</span>
+                                </button>
+                            </div>
+                            <div class="flex items-center gap-2 pt-3 border-t border-slate-800/50">
+                                <span class="flex items-center gap-1 text-[8px] font-bold uppercase tracking-tighter text-primary bg-primary/10 px-1.5 py-0.5 rounded-full border border-primary/20">
+                                    <span class="material-symbols-outlined text-[9px]">verified_user</span>
+                                    Secure
+                                </span>
+                                <span class="flex items-center gap-1 text-[8px] font-bold uppercase tracking-tighter text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded-full border border-blue-400/20">
+                                    <span class="material-symbols-outlined text-[9px]">database</span>
+                                    Forensic
+                                </span>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            }));
+
+            grid.innerHTML = libraryItems.join('');
+        }
+
+        async function trashImage(imageId) {
+            if (!confirm("Move this image to trash? It will be deleted in 30 days.")) return;
+            try {
+                const path = `/api/admin/images/${imageId}/trash`;
+                const headers = await getAuthHeaders(path);
+                const response = await fetch(path, { method: 'POST', headers });
+                if (!response.ok) throw new Error('Failed to move to trash');
+                showToast('Asset moved to trash', 'success');
+                loadLibrary();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
         }
 
         async function handleFileUpload(event) {

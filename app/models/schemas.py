@@ -1,3 +1,4 @@
+from typing import List
 from datetime import datetime
 from typing import Any, Optional
 
@@ -85,3 +86,29 @@ class HealthResponse(BaseModel):
             }
         }
     )
+
+class AuditLogResponse(BaseModel):
+    timestamp: datetime
+    user_id: str
+    event_type: str
+    resource: str
+    status: str
+    details: Optional[str] = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "timestamp": "2026-03-07T14:30:00Z",
+                "user_id": "EMP-001",
+                "event_type": "IMAGE_DOWNLOAD",
+                "resource": "blueprint_v2.png",
+                "status": "success",
+                "details": "IP: 192.168.1.5"
+            }
+        }
+    )
+
+
+
+class AuditLogList(BaseModel):
+    logs: List[AuditLogResponse]

@@ -13,8 +13,14 @@
             darkMode: "class",
             theme: {
                 extend: {
-                    colors: { "primary": "#10b77f", "background-dark": "#0f172a" },
-                    fontFamily: { "display": ["Inter", "sans-serif"], "mono": ["JetBrains Mono", "monospace"] },
+                    colors: {
+                        "primary": "#10b77f",
+                        "background-dark": "#0f172a",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
                 },
             },
         }
@@ -22,14 +28,23 @@
     <style>
         body { font-family: 'Inter', sans-serif; }
         .sidebar-item-active { background-color: rgba(16, 183, 127, 0.15); border-left: 4px solid #10b77f; }
-        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
         .toast-animate { animation: slideIn 0.3s ease-out forwards; }
-        input[type="range"] { accent-color: #10b77f; }
+        input[type="range"]::-webkit-slider-thumb {
+            width: 12px;
+            height: 12px;
+            background: #10b77f;
+            border-radius: 50%;
+            cursor: pointer;
+            -webkit-appearance: none;
+        }
     </style>
 </head>
-<body class="bg-background-dark text-slate-100 min-h-screen flex overflow-hidden">
+<body class="bg-background-dark text-slate-100 min-h-screen flex">
     <div id="toast-container" class="fixed bottom-8 right-8 z-[100] flex flex-col gap-3"></div>
-    
     <div id="login-overlay" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
         <div class="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
             <div class="text-center mb-8">
@@ -40,12 +55,17 @@
                 <p class="text-slate-400 mt-2">Enter Admin API Key</p>
             </div>
             <form onsubmit="handleLogin(event)" class="space-y-4">
-                <input type="password" id="api-key-input" required class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-primary" placeholder="Enter Admin API Key">
-                <button type="submit" class="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-lg font-bold">Access Lab</button>
+                <input type="password" id="api-key-input" required
+                    class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                    placeholder="Enter Admin API Key">
+                <button type="submit" class="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-lg font-bold">
+                    Access Admin Lab
+                </button>
             </form>
-            <div class="mt-6 pt-6 border-t border-slate-700 text-center">
-                <a href="/" class="text-slate-400 hover:text-white transition-colors text-sm flex items-center justify-center gap-2">
-                    <span class="material-symbols-outlined text-sm">arrow_back</span> Return to Home
+            <div class="mt-6 pt-6 border-t border-slate-700">
+                <a href="/" class="flex items-center justify-center gap-2 text-slate-400 hover:text-white transition-colors text-sm">
+                    <span class="material-symbols-outlined text-sm">arrow_back</span>
+                    Return to Home
                 </a>
             </div>
         </div>
@@ -65,6 +85,10 @@
                 <span class="material-symbols-outlined">search_check</span>
                 <span class="font-medium">Investigations</span>
             </a>
+            <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-primary transition-colors" href="/admin/trash">
+                <span class="material-symbols-outlined">delete</span>
+                <span class="font-medium">Trash Lab</span>
+            </a>
             <a class="sidebar-item-active flex items-center gap-3 px-4 py-3 rounded-lg text-primary transition-colors" href="/admin/stress-test">
                 <span class="material-symbols-outlined">experiment</span>
                 <span class="font-medium">Stress-Test Lab</span>
@@ -79,7 +103,7 @@
     <main class="flex-1 flex flex-col overflow-y-auto">
         <header class="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-10">
             <div class="flex items-center gap-2 text-primary font-semibold">
-                <span class="material-symbols-outlined">science</span>
+                <span class="material-symbols-outlined">experiment</span>
                 <span>Forensic Stress-Test Lab</span>
             </div>
             <button onclick="logout()" class="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all text-sm font-bold border border-red-500/20 shadow-lg shadow-red-500/10">
@@ -89,8 +113,8 @@
 
         <div class="p-8 max-w-6xl mx-auto w-full space-y-8">
             <div>
-                <h2 class="text-3xl font-bold tracking-tight">Robustness Testing</h2>
-                <p class="text-slate-400 mt-1">Simulate adversarial attacks to verify watermark resilience.</p>
+                <h2 class="text-3xl font-bold tracking-tight">Stress-Test Lab</h2>
+                <p class="text-slate-400 mt-1">Simulate adversarial attacks to verify watermark robustness.</p>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -99,91 +123,74 @@
                     <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6">
                         <h3 class="text-lg font-bold mb-6 flex items-center gap-2">
                             <span class="material-symbols-outlined text-primary">tune</span>
-                            Attack Parameters
+                            Attack Suite
                         </h3>
                         
-                        <div class="space-y-8">
+                        <div class="space-y-6">
                             <div>
-                                <label class="block text-sm font-medium text-slate-300 mb-2">Select Target Asset</label>
-                                <select id="target-image" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:border-primary focus:outline-none">
+                                <label class="block text-sm font-medium text-slate-300 mb-2">Target Asset</label>
+                                <select id="target-image" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:border-primary focus:outline-none mb-4">
                                     <option value="">Loading assets...</option>
                                 </select>
+                                
+                                <label class="block text-sm font-medium text-slate-300 mb-2">Simulate Identity</label>
+                                <div class="relative">
+                                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">person</span>
+                                    <input type="text" id="target-employee-id" value="EMP-999" placeholder="Enter Employee ID"
+                                        class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-4 py-2.5 text-sm focus:border-primary focus:outline-none transition-all font-mono">
+                                </div>
+                                <p class="text-[9px] text-slate-500 mt-2 italic">The engine will watermark the asset with this ID before attacking.</p>
                             </div>
 
-                            <div>
-                                <label class="block text-sm font-medium text-slate-300 mb-4">Attack Type</label>
-                                <div class="grid grid-cols-1 gap-3">
-                                    <button onclick="setAttack('compression')" id="btn-compression" class="attack-btn bg-slate-900 border-2 border-primary px-4 py-3 rounded-xl flex items-center justify-between group">
-                                        <div class="flex items-center gap-3">
-                                            <span class="material-symbols-outlined text-slate-400 group-hover:text-primary">photo_size_select_small</span>
-                                            <span class="text-sm font-bold">JPEG Compression</span>
-                                        </div>
-                                        <span class="material-symbols-outlined text-primary">check_circle</span>
-                                    </button>
-                                    <button onclick="setAttack('blur')" id="btn-blur" class="attack-btn bg-slate-900 border-2 border-transparent px-4 py-3 rounded-xl flex items-center justify-between group">
-                                        <div class="flex items-center gap-3">
-                                            <span class="material-symbols-outlined text-slate-400 group-hover:text-primary">blur_on</span>
-                                            <span class="text-sm font-bold">Gaussian Blur</span>
-                                        </div>
-                                        <span class="material-symbols-outlined text-transparent">check_circle</span>
-                                    </button>
-                                    <button onclick="setAttack('noise')" id="btn-noise" class="attack-btn bg-slate-900 border-2 border-transparent px-4 py-3 rounded-xl flex items-center justify-between group">
-                                        <div class="flex items-center gap-3">
-                                            <span class="material-symbols-outlined text-slate-400 group-hover:text-primary">grain</span>
-                                            <span class="text-sm font-bold">Salt & Pepper Noise</span>
-                                        </div>
-                                        <span class="material-symbols-outlined text-transparent">check_circle</span>
-                                    </button>
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between">
+                                    <label class="text-sm font-medium text-slate-300">Enabled Attacks</label>
+                                    <div class="flex gap-2">
+                                        <button onclick="toggleAll(true)" class="text-[10px] font-bold text-primary hover:text-primary/80 uppercase">All</button>
+                                        <span class="text-slate-700">|</span>
+                                        <button onclick="toggleAll(false)" class="text-[10px] font-bold text-slate-500 hover:text-slate-400 uppercase">None</button>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div>
-                                <div class="flex justify-between mb-2">
-                                    <label class="text-sm font-medium text-slate-300">Attack Intensity</label>
-                                    <span id="intensity-val" class="text-xs font-mono text-primary">50%</span>
+                                <div id="attack-list" class="space-y-3">
+                                    <!-- Attack items with individual sliders -->
                                 </div>
-                                <input type="range" id="intensity-range" min="0" max="1" step="0.05" value="0.5" 
-                                    oninput="document.getElementById('intensity-val').textContent = Math.round(this.value * 100) + '%'"
-                                    class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer">
                             </div>
 
                             <button onclick="runStressTest()" class="w-full bg-primary hover:bg-primary/90 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2">
                                 <span class="material-symbols-outlined">bolt</span>
-                                Run Adversarial Test
+                                Run Simulation
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Preview & Result -->
+                <!-- Results -->
                 <div class="lg:col-span-2 space-y-6">
                     <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 h-full flex flex-col">
                         <h3 class="text-lg font-bold mb-6 flex items-center gap-2">
-                            <span class="material-symbols-outlined text-primary">preview</span>
-                            Attack Simulation Result
+                            <span class="material-symbols-outlined text-primary">visibility</span>
+                            Forensic Reconstruction
                         </h3>
                         
                         <div id="test-placeholder" class="flex-1 border-2 border-dashed border-slate-700 rounded-xl flex flex-col items-center justify-center text-slate-500">
-                            <span class="material-symbols-outlined text-6xl mb-4">science</span>
-                            <p>Configure parameters and run test to see simulation.</p>
+                            <span class="material-symbols-outlined text-6xl mb-4">biotech</span>
+                            <p>Select attacks and run simulation to view reconstruction.</p>
                         </div>
 
                         <div id="test-result" class="hidden flex-1 space-y-6">
-                            <div class="aspect-video bg-slate-900 rounded-xl overflow-hidden relative border border-slate-700 group">
+                            <div class="aspect-video bg-slate-900 rounded-xl overflow-hidden relative border border-slate-700">
                                 <img id="attacked-preview" class="w-full h-full object-contain" src="">
-                                <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                    <p class="text-xs font-bold uppercase tracking-widest text-white">Post-Attack Asset Preview</p>
-                                </div>
                             </div>
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div class="bg-slate-900 p-4 rounded-xl border border-slate-700">
-                                    <p class="text-[10px] font-bold text-slate-500 uppercase mb-1">Extraction Confidence</p>
+                                    <p class="text-[10px] font-bold text-slate-500 uppercase mb-1">Forensic Confidence</p>
                                     <div class="flex items-center gap-3">
                                         <div class="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                                            <div id="res-bar" class="h-full bg-primary transition-all duration-1000" style="width: 0%"></div>
+                                            <div id="res-bar" class="bg-primary h-full transition-all duration-1000" style="width: 0%"></div>
                                         </div>
-                                        <span id="res-confidence" class="text-lg font-mono font-bold text-primary">0%</span>
+                                        <span id="res-confidence" class="text-xs font-mono font-bold text-primary">0%</span>
                                     </div>
                                 </div>
                                 <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 flex items-center justify-between">
@@ -206,7 +213,71 @@
     <script>
         let IS_LOGGED_IN = localStorage.getItem('admin_logged_in') === 'true';
         let SIGNING_KEY = localStorage.getItem('signing_key') || '';
-        let currentAttack = 'compression';
+        
+        const ATTACKS = [
+            { id: 'compression', name: 'JPEG Compression', icon: 'photo_size_select_small' },
+            { id: 'blur', name: 'Gaussian Blur', icon: 'blur_on' },
+            { id: 'noise', name: 'Salt & Pepper Noise', icon: 'grain' },
+            { id: 'rotation', name: 'Geometric Rotation', icon: 'rotate_right' },
+            { id: 'scaling', name: 'Downscaling/Resizing', icon: 'aspect_ratio' },
+            { id: 'brightness', name: 'Brightness Shift', icon: 'brightness_6' },
+            { id: 'contrast', name: 'Contrast Modulation', icon: 'contrast' },
+            { id: 'sharpen', name: 'Aggressive Sharpening', icon: 'details' }
+        ];
+
+        function initAttackList() {
+            const container = document.getElementById('attack-list');
+            container.innerHTML = ATTACKS.map(a => `
+                <div id="item-${a.id}" class="bg-slate-900 border-2 border-transparent p-3 rounded-xl space-y-2 transition-all">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-xs text-slate-500 icon-${a.id}">${a.icon}</span>
+                            <span class="text-xs font-bold text-slate-300">${a.name}</span>
+                        </div>
+                        <input type="checkbox" id="check-${a.id}" onchange="updateAttackState('${a.id}')" 
+                            class="w-3.5 h-3.5 rounded border-slate-700 bg-slate-800 text-primary focus:ring-primary focus:ring-offset-0">
+                    </div>
+                    <div id="slider-box-${a.id}" class="flex items-center gap-3 opacity-30 pointer-events-none transition-opacity">
+                        <input type="range" id="range-${a.id}" min="0" max="1" step="0.01" value="0.5" 
+                            oninput="document.getElementById('val-${a.id}').textContent = Math.round(this.value * 100) + '%'"
+                            class="flex-1 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary">
+                        <span id="val-${a.id}" class="text-[9px] font-mono text-slate-500 w-6 text-right">50%</span>
+                    </div>
+                </div>
+            `).join('');
+            
+            // Enable compression by default
+            document.getElementById('check-compression').checked = true;
+            updateAttackState('compression');
+        }
+
+        function updateAttackState(id) {
+            const checked = document.getElementById(`check-${id}`).checked;
+            const item = document.getElementById(`item-${id}`);
+            const slider = document.getElementById(`slider-box-${id}`);
+            const icon = item.querySelector(`.icon-${id}`);
+
+            if (checked) {
+                item.classList.add('border-primary/30', 'bg-primary/5');
+                item.classList.remove('border-transparent', 'bg-slate-900');
+                slider.classList.remove('opacity-30', 'pointer-events-none');
+                icon.classList.add('text-primary');
+                icon.classList.remove('text-slate-500');
+            } else {
+                item.classList.remove('border-primary/30', 'bg-primary/5');
+                item.classList.add('border-transparent', 'bg-slate-900');
+                slider.classList.add('opacity-30', 'pointer-events-none');
+                icon.classList.remove('text-primary');
+                icon.classList.add('text-slate-500');
+            }
+        }
+
+        function toggleAll(select) {
+            ATTACKS.forEach(a => {
+                document.getElementById(`check-${a.id}`).checked = select;
+                updateAttackState(a.id);
+            });
+        }
 
         async function generateSignature(path, timestamp) {
             const msg = `${timestamp}${path}`;
@@ -220,21 +291,6 @@
             const timestamp = (Date.now() / 1000).toString();
             const signature = await generateSignature(path, timestamp);
             return { 'X-Timestamp': timestamp, 'X-Signature': signature };
-        }
-
-        function setAttack(type) {
-            currentAttack = type;
-            document.querySelectorAll('.attack-btn').forEach(btn => {
-                btn.classList.remove('border-primary');
-                btn.classList.add('border-transparent');
-                btn.querySelector('.material-symbols-outlined:last-child').classList.add('text-transparent');
-                btn.querySelector('.material-symbols-outlined:last-child').classList.remove('text-primary');
-            });
-            const activeBtn = document.getElementById(`btn-${type}`);
-            activeBtn.classList.remove('border-transparent');
-            activeBtn.classList.add('border-primary');
-            activeBtn.querySelector('.material-symbols-outlined:last-child').classList.remove('text-transparent');
-            activeBtn.querySelector('.material-symbols-outlined:last-child').classList.add('text-primary');
         }
 
         async function handleLogin(event) {
@@ -271,21 +327,31 @@
             const imageId = document.getElementById('target-image').value;
             if (!imageId) return showToast('Please select an asset first', 'info');
 
-            const intensity = document.getElementById('intensity-range').value;
+            const targetId = document.getElementById('target-employee-id').value || 'EMP-999';
+
+            const activeAttacks = ATTACKS.filter(a => document.getElementById(`check-${a.id}`).checked);
+            if (activeAttacks.length === 0) return showToast('Select at least one attack', 'info');
+
+            const intensities = {};
+            activeAttacks.forEach(a => {
+                intensities[a.id] = document.getElementById(`range-${a.id}`).value;
+            });
+
             const placeholder = document.getElementById('test-placeholder');
             const result = document.getElementById('test-result');
             
-            placeholder.innerHTML = '<div class="text-center"><span class="material-symbols-outlined text-4xl animate-spin text-primary">sync</span><p class="mt-4">Simulating adversarial attack...</p></div>';
+            placeholder.innerHTML = '<div class="text-center"><span class="material-symbols-outlined text-4xl animate-spin text-primary">sync</span><p class="mt-4">Simulating complex multi-vector attack...</p></div>';
             placeholder.classList.remove('hidden');
             result.classList.add('hidden');
 
             try {
-                const path = '/api/admin/stress-test';
+                const path = '/api/admin/stress-test/';
                 const headers = await getAuthHeaders(path);
                 const formData = new FormData();
                 formData.append('image_id', imageId);
-                formData.append('attack_type', currentAttack);
-                formData.append('intensity', intensity);
+                formData.append('target_id', targetId);
+                formData.append('attack_type', activeAttacks.map(a => a.id).join(','));
+                formData.append('intensity', JSON.stringify(intensities));
 
                 const response = await fetch(path, {
                     method: 'POST',
@@ -303,7 +369,7 @@
                 
                 placeholder.classList.add('hidden');
                 result.classList.remove('hidden');
-                showToast('Attack simulation complete', 'success');
+                showToast('Multi-vector simulation complete', 'success');
             } catch (error) {
                 showToast(error.message, 'error');
                 placeholder.innerHTML = '<span class="material-symbols-outlined text-6xl mb-4">error</span><p>Simulation error.</p>';
@@ -329,6 +395,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            initAttackList();
             if (IS_LOGGED_IN) {
                 document.getElementById('login-overlay').classList.add('hidden');
                 loadAssets();

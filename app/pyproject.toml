@@ -13,6 +13,12 @@ dependencies = [
     "python-magic>=0.4.27",
     "python-multipart>=0.0.22",
     "uvicorn>=0.41.0",
+    "numpy>=1.26.0",
+    "pycryptodome>=3.18.0",
+    "invisible-watermark>=0.2.0",
+    "torch",
+    "torchvision",
+    "fpdf2>=2.8.7",
 ]
 
 [dependency-groups]
@@ -38,3 +44,12 @@ ignore = ["B008"] # Allow FastAPI Depends() and File() calls in arguments
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }

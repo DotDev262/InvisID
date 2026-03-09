@@ -97,8 +97,8 @@
         
         <div class="flex items-center gap-4">
             <div class="hidden md:flex items-center gap-2 text-slate-300 text-xs mr-2">
-                <span class="material-symbols-outlined text-xs">person</span>
-                <span>John Doe (EMP-001)</span>
+                <span class="material-symbols-outlined text-xs text-primary">person</span>
+                <span id="user-display-id" class="font-mono font-bold tracking-tighter">---</span>
             </div>
             <button onclick="logout()" class="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all text-sm font-bold border border-red-500/20 shadow-lg shadow-red-500/10">
                 <span class="material-symbols-outlined text-sm">logout</span>
@@ -128,6 +128,13 @@
             </div>
 
             <div id="gallery-view">
+                <div class="mb-6 flex justify-end">
+                    <div class="relative w-full md:w-72">
+                        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">search</span>
+                        <input type="text" id="gallery-search" oninput="filterImages()" placeholder="Search assets..." 
+                            class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:border-primary focus:outline-none transition-all">
+                    </div>
+                </div>
                 <div id="gallery-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     <div class="col-span-full text-center py-12 text-slate-500">
                         <span class="material-symbols-outlined text-4xl mb-2">hourglass_empty</span>
@@ -164,7 +171,8 @@
     <script>
         let IS_LOGGED_IN = localStorage.getItem('is_logged_in') === 'true';
         let SIGNING_KEY = localStorage.getItem('signing_key') || '';
-        let images = [];
+        let allImages = [];
+        let displayedImages = [];
         let history = [];
 
         async function generateSignature(path, timestamp) {
@@ -205,14 +213,25 @@
                 
                 localStorage.setItem('is_logged_in', 'true');
                 localStorage.setItem('signing_key', data.signing_key);
+                localStorage.setItem('employee_id', data.employee_id || 'Employee');
+                localStorage.setItem('instance_id', data.instance_id);
                 SIGNING_KEY = data.signing_key;
 
                 document.getElementById('login-overlay').classList.add('hidden');
                 showToast('Access granted', 'success');
+                updateUserDisplay();
                 loadImages();
                 loadHistory();
             } catch (error) {
                 showToast(error.message, 'error');
+            }
+        }
+
+        function updateUserDisplay() {
+            const empId = localStorage.getItem('employee_id');
+            const el = document.getElementById('user-display-id');
+            if (el && empId) {
+                el.textContent = empId;
             }
         }
 
@@ -253,11 +272,22 @@
                 const path = '/api/images/';
                 const headers = await getAuthHeaders(path);
                 const response = await fetch(path, { headers });
+
+                // Check for server restart
+                const serverId = response.headers.get('X-Instance-ID');
+                const localId = localStorage.getItem('instance_id');
+                if (serverId && localId && serverId !== localId) {
+                    showToast('Server session expired', 'error');
+                    setTimeout(logout, 1500);
+                    return;
+                }
+
                 if (!response.ok) {
                     if (response.status === 401) logout();
                     throw new Error('Failed to load images');
                 }
-                images = await response.json();
+                allImages = await response.json();
+                displayedImages = [...allImages];
                 renderGallery();
             } catch (error) {
                 document.getElementById('gallery-grid').innerHTML = `
@@ -275,32 +305,64 @@
             return div.innerHTML;
         }
 
-        function renderGallery() {
+        function filterImages() {
+            const query = document.getElementById('gallery-search').value.toLowerCase().trim();
+            if (!query) {
+                displayedImages = [...allImages];
+            } else {
+                displayedImages = allImages.filter(img => 
+                    img.filename.toLowerCase().includes(query) || 
+                    img.id.toLowerCase().includes(query)
+                );
+            }
+            renderGallery();
+        }
+
+        async function renderGallery() {
             const grid = document.getElementById('gallery-grid');
-            if (images.length === 0) {
+            if (displayedImages.length === 0) {
                 grid.innerHTML = `
                     <div class="col-span-full text-center py-12 text-slate-500">
-                        <span class="material-symbols-outlined text-4xl mb-2">photo_library</span>
-                        <p>No images available</p>
+                        <span class="material-symbols-outlined text-4xl mb-2">${allImages.length === 0 ? 'photo_library' : 'search_off'}</span>
+                        <p>${allImages.length === 0 ? 'No images available' : 'No matching assets found'}</p>
                     </div>
                 `;
                 return;
             }
-            grid.innerHTML = images.map(img => `
-                <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-primary/50 transition-all group">
-                    <div class="aspect-video bg-slate-800 flex items-center justify-center overflow-hidden">
-                        <span class="material-symbols-outlined text-4xl text-slate-600 group-hover:text-primary transition-colors">image</span>
+
+            const galleryItems = await Promise.all(displayedImages.map(async img => {
+                const previewPath = `/api/images/${img.id}/preview`;
+                const headers = await getAuthHeaders(previewPath);
+                
+                // Fetch the image as a blob to include auth headers
+                const response = await fetch(previewPath, { headers });
+                let imgSrc = "";
+                if (response.ok) {
+                    const blob = await response.blob();
+                    imgSrc = URL.createObjectURL(blob);
+                }
+
+                return `
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-primary/50 transition-all group">
+                        <div class="aspect-video bg-slate-800 flex items-center justify-center overflow-hidden relative">
+                            ${imgSrc ? 
+                                `<img src="${imgSrc}" class="w-full h-full object-cover transition-transform group-hover:scale-110" alt="${escapeHTML(img.filename)}">` : 
+                                `<span class="material-symbols-outlined text-4xl text-slate-600 group-hover:text-primary transition-colors">image</span>`
+                            }
+                        </div>
+                        <div class="p-4">
+                            <p class="font-medium truncate text-sm mb-3 text-slate-200">${escapeHTML(img.filename)}</p>
+                            <button onclick="downloadImage('${img.id}', '${escapeHTML(img.filename)}')" 
+                                class="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/10">
+                                <span class="material-symbols-outlined text-sm">download</span>
+                                Download
+                            </button>
+                        </div>
                     </div>
-                    <div class="p-4">
-                        <p class="font-medium truncate text-sm mb-3">${escapeHTML(img.filename)}</p>
-                        <button onclick="downloadImage('${img.id}', '${escapeHTML(img.filename)}')" 
-                            class="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2">
-                            <span class="material-symbols-outlined text-sm">download</span>
-                            Download
-                        </button>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }));
+
+            grid.innerHTML = galleryItems.join('');
         }
 
         async function downloadImage(imageId, filename) {
@@ -315,7 +377,7 @@
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `watermarked_${filename}`;
+                a.download = filename;
                 document.body.appendChild(a);
                 a.click();
                 window.URL.revokeObjectURL(url);
@@ -398,6 +460,9 @@
             } catch (e) {}
             localStorage.removeItem('is_logged_in');
             localStorage.removeItem('signing_key');
+            localStorage.removeItem('employee_id');
+            localStorage.removeItem('instance_id');
+            localStorage.removeItem('download_history');
             showToast('Signed out successfully', 'info');
             setTimeout(() => window.location.href = '/', 500);
         }
@@ -438,6 +503,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             if (IS_LOGGED_IN) {
                 document.getElementById('login-overlay').classList.add('hidden');
+                updateUserDisplay();
                 loadImages();
                 loadHistory();
             }
