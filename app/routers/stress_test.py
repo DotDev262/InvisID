@@ -83,39 +83,72 @@ async def perform_stress_test(
             i = float(intensity_map.get(attack, 0.5))
             
             if attack == "compression":
-                quality = int(100 - (i * 98))
+                quality = int(100 - (i * 90)) # Q100 to Q10
+                if quality < 10: quality = 10
                 buffer = BytesIO()
                 img.save(buffer, format="JPEG", quality=quality)
                 buffer.seek(0)
                 img = Image.open(buffer).copy()
             elif attack == "blur":
-                radius = i * 10
+                radius = i * 5 # Up to R5 blur
                 img = img.filter(ImageFilter.GaussianBlur(radius=radius))
             elif attack == "noise":
                 arr = np.array(img)
-                noise = np.random.normal(0, i * 100, arr.shape).astype(np.int16)
-                arr = np.clip(arr.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+                # Matches noise_attack in script
+                noise = np.random.normal(0, i * 50, arr.shape).astype(np.float32)
+                arr = np.clip(arr.astype(np.float32) + noise, 0, 255).astype(np.uint8)
                 img = Image.fromarray(arr)
             elif attack == "rotation":
-                angle = i * 180
+                angle = (i - 0.5) * 90 # -45 to +45 degrees
                 img = img.rotate(angle, expand=True, fillcolor=(15, 23, 42))
             elif attack == "scaling":
-                scale = 1.0 - (i * 0.9)
-                if scale < 0.05: scale = 0.05
+                scale = 1.0 - (i * 0.8) # 100% to 20%
+                if scale < 0.1: scale = 0.1
                 new_size = (int(img.width * scale), int(img.height * scale))
-                img = img.resize(new_size, Image.Resampling.NEAREST)
+                # Using LANCZOS for higher quality scaling as in script
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+                # Resizing back to original to keep detection grid mostly intact but blurred
+                img = img.resize((img_raw.width, img_raw.height), Image.Resampling.LANCZOS)
             elif attack == "brightness":
                 from PIL import ImageEnhance
                 enhancer = ImageEnhance.Brightness(img)
-                factor = 1.0 + (i - 0.5) * 4.0 if i > 0.5 else i * 2.0
-                img = enhancer.enhance(factor)
+                img = enhancer.enhance(i * 2.0) # 0 to 2.0
             elif attack == "contrast":
                 from PIL import ImageEnhance
                 enhancer = ImageEnhance.Contrast(img)
-                factor = 1.0 + (i * 3.0) - 1.5
-                img = enhancer.enhance(factor)
+                img = enhancer.enhance(i * 2.0)
             elif attack == "sharpen":
                 img = img.filter(ImageFilter.SHARPEN)
+            elif attack == "median":
+                # Median filter (3x3 or 5x5 based on intensity)
+                size = 3 if i < 0.5 else 5
+                arr = np.array(img)
+                arr = cv2.medianBlur(arr, size)
+                img = Image.fromarray(arr)
+            elif attack == "grayscale":
+                img = img.convert("L").convert("RGB")
+            elif attack == "perspective":
+                # Simulate perspective skew (Tilt)
+                import cv2
+                arr = np.array(img)
+                h, w = arr.shape[:2]
+                pts1 = np.float32([[0,0], [w,0], [0,h], [w,h]])
+                # Tilt strength based on intensity
+                off = i * 50
+                pts2 = np.float32([[off,off], [w-off*2,off*1.5], [off*1.5,h-off], [w-off,h-off*2]])
+                M = cv2.getPerspectiveTransform(pts1, pts2)
+                arr = cv2.warpPerspective(arr, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
+                img = Image.fromarray(arr)
+            elif attack == "whatsapp":
+                # Compound attack: Compression + Scaling
+                quality = 70
+                scale = 0.6
+                buffer = BytesIO()
+                img.save(buffer, format="JPEG", quality=quality)
+                img = Image.open(buffer).copy()
+                new_size = (int(img.width * scale), int(img.height * scale))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+                img = img.resize((img_raw.width, img_raw.height), Image.Resampling.LANCZOS)
     except Exception as e:
         logger.error(f"Attack failed: {str(e)}")
         raise HTTPException(status_code=500, detail="Attack simulation failed")

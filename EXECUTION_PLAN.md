@@ -1,10 +1,10 @@
 # InvisID - Final Project Plan
 ## Leak Attribution System for Sensitive Images
 
-**Version:** Final (Platinum Tier - High Precision)  
-**Date:** March 9, 2026  
+**Version:** Beta (Smart Architecture - Validation Phase)  
+**Date:** March 10, 2026  
 **Project Type:** Cybersecurity Capstone  
-**Status:** PHASE 5: USER TRIALS & FIELD VALIDATION
+**Status:** PHASE 4: COMPREHENSIVE TECHNICAL VALIDATION (STRESS-TESTING)
 
 ---
 
@@ -17,47 +17,48 @@ InvisID is a **forensic leak attribution system** designed to maintain absolute 
 | Component | Technology | Implementation Detail |
 |-----------|------------|-----------------------|
 | **Backend** | FastAPI (Python 3.12) | Lifespan-managed background tasks, Security-Headers |
-| **Forensics** | **SIFT-based Homography** | High-precision alignment using SIFT + FLANN Matcher |
-| **Watermarking** | Differential-Mean | Green-channel redundant embedding (10x redundancy) |
+| **Forensics** | **Multi-Scale True ASIFT** | Affine-SIFT with 3D tilt simulation and resolution normalization |
+| **Watermarking** | **JND-Guided DWT-QIM** | Texture-aware frequency domain embedding (Y + Cb channels) |
+| **Error Correction** | **Reed-Solomon (RS)** | RS-Armor for bit-flip recovery in high-noise leaks |
 | **Storage** | SQLite | Full query parameterization & internal PNG conversion |
-| **Crypto** | AES-256-GCM | Authenticated Encryption at Rest |
-| **Auth** | HMAC-SHA256 | Replay-resistant signing with Instance Heartbeat |
+| **Crypto** | **AES-256-GCM** | Authenticated Encryption at Rest for all master assets |
+| **Auth** | **HMAC-SHA256** | Replay-resistant UI signing with Instance Heartbeat |
 
 ---
 
-## 2. Final Architecture & Module Structure
-- `app/routers/admin.py`: Dynamic metrics (weekly trends), Master Ingest, Diagnostic Engine.
-- `app/routers/investigate.py`: **Evidence Management System**, PDF Report Engine, SIFT-Alignment logic.
-- `app/routers/stress_test.py`: Sequential Multi-Vector simulation suite (Intensity-specific).
-- `app/services/image_service.py`: Core forensic algorithms (Differential-Mean + SIFT Homography).
-- `scripts/`: Standalone Forensic Audit Suite (100% Accuracy verification scripts).
+## 2. Architecture & Module Structure
+- `app/routers/admin.py`: Dynamic metrics, Master Ingest, Diagnostic Engine.
+- `app/routers/investigate.py`: Evidence Management System, PDF Report Engine.
+- `app/routers/stress_test.py`: Sequential Multi-Vector simulation suite (Platinum Suite).
+- `app/services/image_service.py`: Core forensic algorithms (**ASIFT + DWT-QIM + RS Armor**).
+- `scripts/`: Standalone Forensic Audit Suite (Preliminary 96.2% accuracy verification).
 
 ---
 
-## 13. Implementation Status (Updated March 9, 2026)
+## 13. Implementation Status (Updated March 10, 2026)
 
-### ✅ Phase 4: Platinum Tier (Technical Complete)
-- [x] **100% Technical Accuracy**: Verified 13/13 attack vectors in automated suite.
-- [x] **SIFT Alignment Engine**: Automatic correction of 3D tilt, rotation, and scaling.
-- [x] **Formal PDF Reporting**: Professional forensic case export with visual evidence.
-- [x] **Dynamic Identity Suite**: 8 distinct forensic identities managed via environment.
+### 🕒 Phase 4: Platinum Tier (VALIDATION IN PROGRESS)
+- [ ] **Technical Accuracy Audit**: Preliminary benchmark 96.2% across 13 attack vectors.
+- [x] **ASIFT Alignment Engine**: Integrated True Affine-SIFT simulation for 3D tilts.
+- [x] **JND Model Integration**: Integrated texture-masking logic for invisibility.
+- [x] **Resolution-Adaptive Engine**: NumPy-based 8K support active.
+- [x] **Security Hardening**: AES-256-GCM and HMAC-SHA256 pipelines operational.
 
-### 🕒 Phase 5: User Trials & Real-World Validation (IN PROGRESS)
+### 🕒 Phase 5: User Trials & Real-World Validation (PENDING AUDIT)
+- [x] **8K High-Res Validation**: Confirmed signal survival on ultra-HD organization assets.
 - [ ] **Cross-Device Testing**: Verifying extraction from images shared via mobile apps.
-- [ ] **Multi-User Stress**: Simultaneous downloads and investigations by different team members.
-- [ ] **UAT (User Acceptance Testing)**: Collecting feedback on SOC Dashboard usability.
-- [ ] **Analog Hole Simulation**: Printing and scanning/re-photographing assets.
+- [ ] **Multi-User Stress**: Simultaneous downloads and investigations.
 
 ---
 
-## 15. Final Security Verification (Technical)
-The system has been audited against the following threats:
-1. **Geometric Attacks**: Corrected by SIFT-based homography alignment.
-2. **Signal Attacks**: Mitigated by block-based differential mean redundancy.
-3. **Replay Attacks**: Blocked by HMAC-SHA256 timestamp verification window.
-4. **Log Tampering**: Detectable via the cryptographic hash-chain validator.
-5. **DDoS/Brute Force**: Mitigated via custom `RateLimitMiddleware`.
+## 15. Security Verification (Ongoing)
+The system is being audited against the following threats:
+1. **Geometric Attacks**: Mitigated by **True ASIFT** alignment.
+2. **Signal Corruption**: Mitigated by **DWT-QIM** patterns and **RS-Armor**.
+3. **Asset Tampering**: Mitigated by **AES-256-GCM** authenticated encryption.
+4. **Replay Attacks**: Mitigated by **HMAC-SHA256** and Instance Heartbeat.
+5. **Log Tampering**: Detectable via cryptographic hash-chaining.
 
-**Document Version:** Platinum-Tier Beta  
-**Last Updated:** March 9, 2026  
-**Status:** UNDERGOING FIELD TRIALS
+**Document Version:** Beta 4.1 (Validation)  
+**Last Updated:** March 10, 2026  
+**Status:** UNDERGOING TECHNICAL STRESS-TESTING
