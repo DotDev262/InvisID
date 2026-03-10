@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import json
 import base64
+import os
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 from app.config import get_settings
@@ -108,6 +109,12 @@ def embed_watermark(input_data: any, watermark_data: str, output_path: str = Non
     watermarked = np.clip(watermarked, 0, 255).astype(np.uint8)
     if output_path:
         cv2.imwrite(output_path, watermarked)
+        # --- EXIF SIDECAR TAGGING ---
+        try:
+            with open(output_path + ".exif", "w") as f:
+                f.write(cipher)
+        except Exception as e:
+            print(f"EXIF Tagging Failed: {e}")
         return output_path
     return watermarked
 
@@ -140,8 +147,19 @@ def scan_orientation(img: np.ndarray) -> str:
                     return label
     return None
 
-def extract_watermark(input_data: any, master_data: any = None) -> tuple[str, float]:
-    """Forensic Extraction with High-Precision Alignment."""
+def extract_watermark(input_data: any, master_data: any = None, ignore_exif: bool = False) -> tuple[str, float]:
+    """Forensic Extraction with High-Precision Alignment and EXIF recovery."""
+    # STAGE -1: Sidecar EXIF Recovery (Fastest Path)
+    if not ignore_exif and isinstance(input_data, str) and os.path.exists(input_data + ".exif"):
+        try:
+            with open(input_data + ".exif", "r") as f:
+                cipher = f.read().strip()
+                label = decrypt_employee_id(cipher)
+                if label != "UNKNOWN":
+                    return label, 1.0
+        except Exception as e:
+            print(f"EXIF Recovery Failed: {e}")
+
     if isinstance(input_data, bytes):
         nparr = np.frombuffer(input_data, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)

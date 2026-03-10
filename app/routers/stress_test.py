@@ -22,7 +22,8 @@ async def perform_stress_test(
     image_id: str = Form(...),
     target_id: str = Form(...),
     attack_type: str = Form(...), # Comma-separated list of attacks
-    intensity: str = Form(...)    # JSON string mapping attack names to their intensity
+    intensity: str = Form(...),   # JSON string mapping attack names to their intensity
+    ignore_exif: str = Form("false")
 ):
     """
     Simulates a real-world forensic cycle:
@@ -30,6 +31,7 @@ async def perform_stress_test(
     2. Applies sequential adversarial attacks.
     3. Attempts to extract the custom ID back.
     """
+    ignore_exif_bool = ignore_exif.lower() == "true"
     # 1. Get the master image filename
     from app.utils.db import get_db
     conn = get_db()
@@ -125,7 +127,7 @@ async def perform_stress_test(
     img_str = base64.b64encode(attacked_bytes).decode()
     
     # 5. Extraction with Homography Alignment (extreme resilience)
-    extracted_id, confidence = extract_watermark(attacked_bytes, master_data=img_raw)
+    extracted_id, confidence = extract_watermark(attacked_bytes, master_data=img_raw, ignore_exif=ignore_exif_bool)
     
     return {
         "attacked_image": f"data:image/jpeg;base64,{img_str}",

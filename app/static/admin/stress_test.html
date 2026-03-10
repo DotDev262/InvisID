@@ -157,6 +157,20 @@
                                 </div>
                             </div>
 
+                            <div class="bg-slate-900/50 border border-slate-700 rounded-xl p-4 space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <span class="material-symbols-outlined text-amber-500 text-sm">info</span>
+                                        <span class="text-xs font-bold text-slate-300 uppercase tracking-wider">Forensic Override</span>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer scale-90">
+                                        <input type="checkbox" id="ignore-exif" class="sr-only peer">
+                                        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                                    </label>
+                                </div>
+                                <p class="text-[10px] text-slate-500 italic leading-tight">Ignore cryptographically signed EXIF sidecar data to test spatial watermark only.</p>
+                            </div>
+
                             <button onclick="runStressTest()" class="w-full bg-primary hover:bg-primary/90 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2">
                                 <span class="material-symbols-outlined">bolt</span>
                                 Run Simulation
@@ -232,16 +246,21 @@
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2">
                             <span class="material-symbols-outlined text-xs text-slate-500 icon-${a.id}">${a.icon}</span>
-                            <span class="text-xs font-bold text-slate-300">${a.name}</span>
+                            <span class="text-xs font-bold text-slate-300 uppercase tracking-tight">${a.name}</span>
                         </div>
                         <input type="checkbox" id="check-${a.id}" onchange="updateAttackState('${a.id}')" 
-                            class="w-3.5 h-3.5 rounded border-slate-700 bg-slate-800 text-primary focus:ring-primary focus:ring-offset-0">
+                            class="w-3.5 h-3.5 rounded border-slate-700 bg-slate-800 text-primary focus:ring-primary focus:ring-offset-0 transition-all">
                     </div>
-                    <div id="slider-box-${a.id}" class="flex items-center gap-3 opacity-30 pointer-events-none transition-opacity">
+                    <div id="slider-box-${a.id}" class="flex items-center gap-4 opacity-30 pointer-events-none transition-opacity">
                         <input type="range" id="range-${a.id}" min="0" max="1" step="0.01" value="0.5" 
-                            oninput="document.getElementById('val-${a.id}').textContent = Math.round(this.value * 100) + '%'"
-                            class="flex-1 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary">
-                        <span id="val-${a.id}" class="text-[9px] font-mono text-slate-500 w-6 text-right">50%</span>
+                            oninput="syncSliderToInput('${a.id}')"
+                            class="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary">
+                        <div class="flex items-center gap-1 bg-slate-800 rounded-md px-2 py-1">
+                            <input type="number" id="input-${a.id}" min="0" max="100" value="50" 
+                                oninput="syncInputToSlider('${a.id}')"
+                                class="bg-transparent text-lg font-mono font-bold text-primary w-10 focus:outline-none p-0 border-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none">
+                            <span class="text-xs font-bold text-slate-500 font-mono">%</span>
+                        </div>
                     </div>
                 </div>
             `).join('');
@@ -249,6 +268,22 @@
             // Enable compression by default
             document.getElementById('check-compression').checked = true;
             updateAttackState('compression');
+        }
+
+        function syncSliderToInput(id) {
+            const range = document.getElementById(`range-${id}`);
+            const input = document.getElementById(`input-${id}`);
+            input.value = Math.round(range.value * 100);
+        }
+
+        function syncInputToSlider(id) {
+            const range = document.getElementById(`range-${id}`);
+            const input = document.getElementById(`input-${id}`);
+            let val = parseInt(input.value);
+            if (isNaN(val)) val = 0;
+            if (val > 100) val = 100;
+            if (val < 0) val = 0;
+            range.value = val / 100;
         }
 
         function updateAttackState(id) {
@@ -337,6 +372,8 @@
                 intensities[a.id] = document.getElementById(`range-${a.id}`).value;
             });
 
+            const ignoreExif = document.getElementById('ignore-exif').checked;
+
             const placeholder = document.getElementById('test-placeholder');
             const result = document.getElementById('test-result');
             
@@ -352,6 +389,7 @@
                 formData.append('target_id', targetId);
                 formData.append('attack_type', activeAttacks.map(a => a.id).join(','));
                 formData.append('intensity', JSON.stringify(intensities));
+                formData.append('ignore_exif', ignoreExif ? 'true' : 'false');
 
                 const response = await fetch(path, {
                     method: 'POST',
