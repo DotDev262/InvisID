@@ -27,15 +27,22 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         # Referrer Policy
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        
+        # Cross-Origin Isolation (Prevents third-party scripts from reading canvas)
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
 
-        # Content Security Policy - allow external resources for static files
+        # Content Security Policy - hardened against extension injection and canvas grabbing
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; "
             "font-src 'self' https://fonts.gstatic.com; "
-            "img-src 'self' data: blob: https://lh3.googleusercontent.com; "
-            "connect-src 'self' https://cdn.tailwindcss.com"
+            "img-src 'self' data: blob:; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self';"
         )
 
         return response

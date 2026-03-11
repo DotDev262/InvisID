@@ -40,6 +40,23 @@
         .tab-active { border-bottom: 2px solid #10b77f; color: #10b77f; }
         .tab-inactive { color: #94a3b8; }
         .tab-inactive:hover { color: #cbd5e1; }
+
+        /* PRINT SHIELD: Hides all sensitive content when printing */
+        @media print {
+            body { display: none !important; }
+            #print-restriction-overlay {
+                display: flex !important;
+                position: fixed;
+                inset: 0;
+                background: white;
+                color: black;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                font-family: sans-serif;
+                z-index: 9999;
+            }
+        }
     </style>
     <style>body { min-height: max(884px, 100dvh); }</style>
     <style>
@@ -51,7 +68,21 @@
     </style>
 </head>
 
-<body class="bg-background-dark text-slate-100 min-h-screen flex flex-col">
+<body class="bg-background-dark text-slate-100 min-h-screen flex flex-col select-none">
+    <!-- Print Restriction Message -->
+    <div id="print-restriction-overlay" class="hidden">
+        <div class="p-10 border-4 border-black">
+            <h1 style="font-size: 24px; font-weight: bold; margin-bottom: 10px;">FORENSIC ACCESS RESTRICTED</h1>
+            <p>Direct printing of InvisID assets is prohibited. All access is logged and tracked.</p>
+        </div>
+    </div>
+
+    <!-- Screen Capture Shield Overlay -->
+    <div id="screen-shield" class="fixed inset-0 bg-black z-[200] hidden flex-col items-center justify-center text-center p-8">
+        <span class="material-symbols-outlined text-primary text-6xl mb-4 animate-pulse">visibility_off</span>
+        <h2 class="text-2xl font-bold text-white mb-2">Capture Prevention Active</h2>
+        <p class="text-slate-400 max-w-md">Preview is disabled while screen capture or unauthorized focus shift is detected.</p>
+    </div>
     <!-- Toast Container -->
     <div id="toast-container" class="fixed bottom-8 right-8 z-[100] flex flex-col gap-3"></div>
     <div id="login-overlay" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
@@ -330,23 +361,29 @@
                 return;
             }
 
+            const empId = localStorage.getItem('employee_id') || 'Unknown';
+
             const galleryItems = await Promise.all(displayedImages.map(async img => {
                 const previewPath = `/api/images/${img.id}/preview`;
                 const headers = await getAuthHeaders(previewPath);
                 
-                // Fetch the image as a blob to include auth headers
                 const response = await fetch(previewPath, { headers });
                 let imgSrc = "";
                 if (response.ok) {
                     const blob = await response.blob();
-                    imgSrc = URL.createObjectURL(blob);
+                    // Convert to Base64 to prevent easy Network Tab extraction
+                    imgSrc = await new Promise(r => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => r(reader.result);
+                        reader.readAsDataURL(blob);
+                    });
                 }
 
                 return `
                     <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-primary/50 transition-all group">
                         <div class="aspect-video bg-slate-800 flex items-center justify-center overflow-hidden relative">
                             ${imgSrc ? 
-                                `<img src="${imgSrc}" class="w-full h-full object-cover transition-transform group-hover:scale-110" alt="${escapeHTML(img.filename)}">` : 
+                                `<canvas class="w-full h-full object-cover secure-canvas" data-src="${imgSrc}" data-emp="${empId}" alt="${escapeHTML(img.filename)}"></canvas>` : 
                                 `<span class="material-symbols-outlined text-4xl text-slate-600 group-hover:text-primary transition-colors">image</span>`
                             }
                         </div>
@@ -363,6 +400,47 @@
             }));
 
             grid.innerHTML = galleryItems.join('');
+            initSecureCanvases();
+        }
+
+        function initSecureCanvases() {
+            const canvases = document.querySelectorAll('.secure-canvas');
+            canvases.forEach(canvas => {
+                const ctx = canvas.getContext('2d');
+                const img = new Image();
+                const empId = canvas.getAttribute('data-emp');
+                img.onload = () => {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    
+                    // Animation loop for dynamic visual noise
+                    let offset = 0;
+                    function drawProtected() {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0);
+                        
+                        // Add moving text overlay (Visual Noise)
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.03)'; // Very faint
+                        ctx.font = '24px monospace';
+                        ctx.save();
+                        ctx.translate(canvas.width/2, canvas.height/2);
+                        ctx.rotate(-Math.PI / 4);
+                        for(let i = -10; i < 10; i++) {
+                            for(let j = -10; j < 10; j++) {
+                                ctx.fillText(empId, i*150 + offset, j*100 + (offset/2));
+                            }
+                        }
+                        ctx.restore();
+                        
+                        offset = (offset + 0.5) % 150;
+                        requestAnimationFrame(drawProtected);
+                    }
+                    drawProtected();
+                };
+                img.src = canvas.getAttribute('data-src');
+                // Remove base64 from DOM immediately
+                canvas.removeAttribute('data-src');
+            });
         }
 
         async function downloadImage(imageId, filename) {
@@ -498,6 +576,105 @@
                 toast.style.transition = 'all 0.3s ease-in';
                 setTimeout(() => toast.remove(), 300);
             }, 4000);
+        }
+
+        // --- ACTIVE SECURITY WRAPPER ---
+        let securityStrikes = 0;
+        const MAX_STRIKES = 4;
+
+        async function reportSecurityStrike(type, resource = 'Gallery Preview') {
+            securityStrikes++;
+            showToast(`Security Alert: Unauthorized ${type} attempt detected.`, 'error');
+            
+            try {
+                const path = '/api/security/log-strike';
+                const headers = await getAuthHeaders(path);
+                const formData = new FormData();
+                formData.append('event_type', type);
+                formData.append('resource', resource);
+                
+                await fetch(path, {
+                    method: 'POST',
+                    headers: headers,
+                    body: formData
+                });
+
+                if (securityStrikes >= MAX_STRIKES) {
+                    showToast('Critical Security Violation: Account suspended.', 'error');
+                    setTimeout(logout, 2000);
+                }
+            } catch (e) { console.error("Strike report failed", e); }
+        }
+
+        // 1. Disable Right Click
+        document.addEventListener('contextmenu', (e) => {
+            if (e.target.tagName === 'IMG' || e.target.closest('#gallery-grid')) {
+                e.preventDefault();
+                reportSecurityStrike('RIGHT_CLICK', e.target.alt || 'Asset Preview');
+                return false;
+            }
+        });
+
+        // 2. Advanced Key Detection (Screenshots & DevTools)
+        document.addEventListener('keydown', (e) => {
+            // Screenshot heuristics
+            if (e.key === 'PrintScreen' || (e.metaKey && e.shiftKey && (e.key === '3' || e.key === '4'))) {
+                reportSecurityStrike('SCREENSHOT_KEY');
+                e.preventDefault();
+            }
+            // DevTools heuristics (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U)
+            if (e.key === 'F12' || 
+               (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j' || e.key === 'C' || e.key === 'c')) ||
+               (e.ctrlKey && (e.key === 'U' || e.key === 'u'))) {
+                reportSecurityStrike('DEVTOOLS_ACCESS');
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // 3. DevTools Dimension Heuristic
+        // Detects if DevTools is opened by checking the difference between outer and inner window sizes
+        window.addEventListener('resize', () => {
+            const threshold = 160;
+            const widthDiff = window.outerWidth - window.innerWidth;
+            const heightDiff = window.outerHeight - window.innerHeight;
+            if (widthDiff > threshold || heightDiff > threshold) {
+                // If it suddenly opened
+                const shield = document.getElementById('screen-shield');
+                if (shield.classList.contains('hidden')) {
+                    reportSecurityStrike('DEVTOOLS_RESIZE_HEURISTIC', 'Window State');
+                    shield.classList.remove('hidden');
+                    shield.classList.add('flex');
+                }
+            }
+        });
+
+        // 4. Page Visibility / Screen Capture Shield
+        document.addEventListener('visibilitychange', () => {
+            const shield = document.getElementById('screen-shield');
+            if (document.hidden) {
+                shield.classList.remove('hidden');
+                shield.classList.add('flex');
+            } else {
+                shield.classList.add('hidden');
+                shield.classList.remove('flex');
+            }
+        });
+
+        // Detect Screen Sharing (if browser supports)
+        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+            // Note: We can't strictly detect IF sharing is active without user prompt,
+            // but we can detect focus loss which often accompanies external capture tools.
+            window.addEventListener('blur', () => {
+                const shield = document.getElementById('screen-shield');
+                shield.classList.remove('hidden');
+                shield.classList.add('flex');
+            });
+            window.addEventListener('focus', () => {
+                const shield = document.getElementById('screen-shield');
+                shield.classList.add('hidden');
+                shield.classList.remove('flex');
+            });
         }
 
         document.addEventListener('DOMContentLoaded', () => {
