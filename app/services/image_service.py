@@ -80,7 +80,7 @@ def decrypt_employee_id(cipher_text: str) -> str:
     except: return "UNKNOWN"
 
 def align_leak_to_master(leak_img: np.ndarray, master_img: np.ndarray) -> np.ndarray:
-    """Multi-Scale ASIFT Alignment."""
+    """Multi-Scale ASIFT Alignment with Moiré Eraser."""
     def get_affine_tilt(img, tilt, phi):
         h, w = img.shape[:2]
         t_mat = np.float32([[1, 0, 0], [0, 1.0/tilt, 0]])
@@ -94,6 +94,10 @@ def align_leak_to_master(leak_img: np.ndarray, master_img: np.ndarray) -> np.nda
         h_s, w_s = int(h_orig * scale), int(w_orig * scale)
         m_scaled = cv2.resize(cv2.cvtColor(master_img, cv2.COLOR_BGR2GRAY), (w_s, h_s), interpolation=cv2.INTER_AREA)
         l_scaled = cv2.resize(cv2.cvtColor(leak_img, cv2.COLOR_BGR2GRAY), (w_s, h_s), interpolation=cv2.INTER_AREA)
+        
+        # Moiré Eraser: Heavy median blur eliminates screen pixel-grids while preserving edges
+        m_scaled = cv2.medianBlur(m_scaled, 7)
+        l_scaled = cv2.medianBlur(l_scaled, 7)
         
         sift = cv2.SIFT_create(15000)
         kp_m, des_m = sift.detectAndCompute(m_scaled, None)
@@ -110,7 +114,7 @@ def align_leak_to_master(leak_img: np.ndarray, master_img: np.ndarray) -> np.nda
                 good = [m for m, n in matches if m.distance < 0.75 * n.distance]
                 if len(good) > max_good:
                     max_good = len(good)
-                    if len(good) > 12:
+                    if len(good) > 10:
                         src_pts = np.float32([kp_l[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
                         dst_pts = np.float32([kp_m[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
                         M, _ = cv2.findHomography(src_pts, dst_pts, cv2.USAC_MAGSAC, 10.0)
@@ -123,6 +127,36 @@ def align_leak_to_master(leak_img: np.ndarray, master_img: np.ndarray) -> np.nda
             return cv2.warpPerspective(leak_img, best_M, (w_orig, h_orig), borderMode=cv2.BORDER_REPLICATE)
     except: pass
     return leak_img
+
+def suppress_moire_noise(img: np.ndarray) -> np.ndarray:
+    """Filters out Moiré patterns and screen-flicker noise."""
+    return cv2.medianBlur(img, 3)
+
+def log_polar_resync(leak_img: np.ndarray, master_img: np.ndarray) -> np.ndarray:
+    """Log-Polar Fourier-Mellin Alignment."""
+    try:
+        h, w = master_img.shape[:2]
+        center = (w // 2, h // 2)
+        radius = min(h, w) / 2
+        
+        def get_mag_spectrum(img):
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            dft = cv2.dft(np.float32(gray), flags=cv2.DFT_COMPLEX_OUTPUT)
+            dft_shift = np.fft.fftshift(dft)
+            mag = cv2.magnitude(dft_shift[:,:,0], dft_shift[:,:,1])
+            return cv2.log(mag + 1)
+
+        mag_m = get_mag_spectrum(master_img)
+        mag_l = get_mag_spectrum(leak_img)
+        flags = cv2.WARP_POLAR_LOG | cv2.INTER_LINEAR | cv2.WARP_FILL_OUTLIERS
+        lp_m = cv2.warpPolar(mag_m, (w, h), center, radius, flags)
+        lp_l = cv2.warpPolar(mag_l, (w, h), center, radius, flags)
+        (dx, dy), response = cv2.phaseCorrelate(lp_m, lp_l)
+        rotation = dy * 360.0 / h
+        scale = np.exp(dx * np.log(radius) / w)
+        M = cv2.getRotationMatrix2D(center, rotation, 1.0/scale)
+        return cv2.warpAffine(leak_img, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
+    except: return leak_img
 
 # --- CORE PIPELINE ---
 
@@ -181,6 +215,25 @@ def embed_watermark(input_data: any, watermark_data: str, output_path: str = Non
         ycrcb[:, :, ch_idx] = np.clip(chan + residual_smoothed, 0, 255).astype(np.uint8)
 
     final = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
+    
+    # --- HYBRID BURN-IN LAYER: Analog Hole Security ---
+    # Overlay faint tiled ID text with Adaptive Contrast
+    h, w = final.shape[:2]
+    overlay = final.copy()
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = max(0.6, min(h, w) / 1500.0)
+    
+    step_y = int(h / 6)
+    step_x = int(w / 4)
+    for y in range(step_y // 2, h, step_y):
+        for x in range(step_x // 2, w, step_x):
+            sample = final[max(0, y-20):min(h, y+20), max(0, x-20):min(w, x+100)]
+            avg_brightness = np.mean(cv2.cvtColor(sample, cv2.COLOR_BGR2GRAY))
+            color = (255, 255, 255) if avg_brightness < 128 else (0, 0, 0)
+            cv2.putText(overlay, watermark_data, (x, y), font, font_scale, color, 2, cv2.LINE_AA)
+            
+    final = cv2.addWeighted(overlay, 0.06, final, 0.94, 0)
+
     if output_path:
         cv2.imwrite(output_path, final)
         try:
@@ -202,7 +255,6 @@ def scan_orientation(img: np.ndarray, master_ycrcb: np.ndarray = None) -> str:
         
         try:
             coeffs = pywt.wavedec2(chan, 'haar', level=level)
-            # Detail bands LH and HL
             bands = [coeffs[1][0], coeffs[1][1]]
         except: continue
 
@@ -211,13 +263,11 @@ def scan_orientation(img: np.ndarray, master_ycrcb: np.ndarray = None) -> str:
         
         votes = [[] for _ in range(PAYLOAD_LEN)]
         for band in bands:
-            # Vectorized majority scan
             v1 = np.round(band / delta_map) * delta_map + delta_map / 4
             v0 = np.round(band / delta_map) * delta_map - delta_map / 4
             bits_map = (np.abs(band - v1) < np.abs(band - v0)).astype(np.int8)
             
             flat = bits_map.flatten()
-            # Sample only bits that were modulated (checkerboard jitter)
             modulated_indices = np.where(np.indices(bits_map.shape).sum(axis=0).flatten() % 2 == 0)[0]
             flat_filtered = flat[modulated_indices]
             
@@ -236,21 +286,22 @@ def scan_orientation(img: np.ndarray, master_ycrcb: np.ndarray = None) -> str:
                     if encrypt_employee_id(label)[:2] == marker: return label
     return None
 
-def extract_watermark(input_data: any, master_data: any = None, ignore_exif: bool = False) -> tuple[str, float]:
-    """Lazy Forensic Pipeline."""
+def extract_watermark(input_data: any, master_data: any = None, ignore_exif: bool = False) -> tuple[str, float, np.ndarray]:
+    """Production Forensic Extraction Engine with Multi-Value Return (ID, Conf, AlignedImg)."""
     if not ignore_exif and isinstance(input_data, str) and os.path.exists(input_data + ".exif"):
         try:
             with open(input_data + ".exif", "r") as f:
                 label = decrypt_employee_id(f.read().strip())
-                if label != "UNKNOWN": return label, 1.0
+                if label != "UNKNOWN": return label, 1.0, None
         except: pass
 
     if isinstance(input_data, bytes):
         img = cv2.imdecode(np.frombuffer(input_data, np.uint8), cv2.IMREAD_COLOR)
     elif isinstance(input_data, np.ndarray): img = input_data
     else: img = cv2.imread(input_data)
-    if img is None: return "UNKNOWN", 0.0
+    if img is None: return "UNKNOWN", 0.0, None
 
+    best_aligned = img.copy()
     m_ycrcb, m_arr = None, None
     if master_data is not None:
         if isinstance(master_data, bytes):
@@ -264,13 +315,17 @@ def extract_watermark(input_data: any, master_data: any = None, ignore_exif: boo
     for angle in [0, 90, 180, 270]:
         rot = img if angle == 0 else np.rot90(img, angle // 90)
         res = scan_orientation(rot, m_ycrcb)
-        if res: return res, 1.0
+        if res: return res, 1.0, rot
 
-    # STAGE 2: Geometric Alignment
+    # STAGE 2: Geometric Alignment (ASIFT + Log-Polar)
     if m_arr is not None:
-        aligned = align_leak_to_master(img, m_arr)
-        res = scan_orientation(aligned, m_ycrcb)
-        if res: return res, 0.98
+        img_asift = align_leak_to_master(img, m_arr)
+        res = scan_orientation(img_asift, m_ycrcb)
+        if res: return res, 0.98, img_asift
+        
+        img_lp = log_polar_resync(img, m_arr)
+        res = scan_orientation(img_lp, m_ycrcb)
+        if res: return res, 0.97, img_lp
         
     # STAGE 3: Blind Search Fallback
     h, w = img.shape[:2]
@@ -278,6 +333,6 @@ def extract_watermark(input_data: any, master_data: any = None, ignore_exif: boo
         M = cv2.getRotationMatrix2D((w/2, h/2), angle, 1)
         rot = cv2.warpAffine(img, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
         res = scan_orientation(rot, m_ycrcb)
-        if res: return res, 0.90
+        if res: return res, 0.90, rot
 
-    return "UNKNOWN", 0.0
+    return "UNKNOWN", 0.0, best_aligned

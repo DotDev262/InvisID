@@ -25,6 +25,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # XSS Protection
         response.headers["X-XSS-Protection"] = "1; mode=block"
 
+        # AI/Bot Protection: Prevent indexing and following
+        response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+
         # Referrer Policy
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         
