@@ -632,14 +632,17 @@
             }
         });
 
-        // 3. DevTools Dimension Heuristic
-        // Detects if DevTools is opened by checking the difference between outer and inner window sizes
+        // 3. DevTools Dimension Heuristic (Hardened)
         window.addEventListener('resize', () => {
             const threshold = 160;
+            const isMaximized = window.outerWidth >= screen.availWidth && window.outerHeight >= screen.availHeight;
+            
             const widthDiff = window.outerWidth - window.innerWidth;
             const heightDiff = window.outerHeight - window.innerHeight;
-            if (widthDiff > threshold || heightDiff > threshold) {
-                // If it suddenly opened
+            
+            // Trigger ONLY if maximized (where browser chrome is constant) OR if diff is extreme
+            // This prevents false positives from manual dragging while docked
+            if (isMaximized && (widthDiff > threshold || heightDiff > threshold)) {
                 const shield = document.getElementById('screen-shield');
                 if (shield.classList.contains('hidden')) {
                     reportSecurityStrike('DEVTOOLS_RESIZE_HEURISTIC', 'Window State');
