@@ -443,8 +443,10 @@
             });
         }
 
+        let isDownloading = false;
         async function downloadImage(imageId, filename) {
             try {
+                isDownloading = true; // Enable focus grace
                 showToast('Preparing secure download...', 'info');
                 const path = `/api/images/${imageId}/download`;
                 const headers = await getAuthHeaders(path);
@@ -458,12 +460,17 @@
                 a.download = filename;
                 document.body.appendChild(a);
                 a.click();
+                
+                // Allow 3 seconds for the OS save dialog to handle focus
+                setTimeout(() => { isDownloading = false; }, 3000);
+                
                 window.URL.revokeObjectURL(url);
                 a.remove();
                 
                 addToHistory(filename);
                 showToast('Image downloaded successfully', 'success');
             } catch (error) {
+                isDownloading = false;
                 showToast(error.message, 'error');
             }
         }
@@ -670,6 +677,7 @@
             // Note: We can't strictly detect IF sharing is active without user prompt,
             // but we can detect focus loss which often accompanies external capture tools.
             window.addEventListener('blur', () => {
+                if (isDownloading) return; // Skip shield if we are currently downloading
                 const shield = document.getElementById('screen-shield');
                 shield.classList.remove('hidden');
                 shield.classList.add('flex');
