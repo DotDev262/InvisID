@@ -30,8 +30,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         
         # Cross-Origin Isolation (Prevents third-party scripts from reading canvas)
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
-        response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
-        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Embedder-Policy"] = "credentialless" # Better compatibility for fonts
+        response.headers["X-Content-Type-Options"] = "nosniff"
 
         # Content Security Policy - hardened against extension injection and canvas grabbing
         response.headers["Content-Security-Policy"] = (
@@ -40,7 +40,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data: blob:; "
-            "connect-src 'self'; "
+            "connect-src 'self' https://cdn.tailwindcss.com; "
             "object-src 'none'; "
             "base-uri 'self';"
         )
