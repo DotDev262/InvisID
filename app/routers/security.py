@@ -8,14 +8,14 @@ router = APIRouter(prefix="/security", tags=["security"])
 async def log_security_strike(
     event_type: str = Form(...),
     resource: str = Form(...),
-    user_id: str = Depends(get_current_user)
+    current_user = Depends(get_current_user)
 ):
     """
     Records an unauthorized capture attempt (Right-click, Print, Screenshot etc.)
     triggered by the client-side defense wrapper.
     """
     record_log(
-        user_id=user_id,
+        user_id=current_user.id,
         event_type=f"UNAUTHORIZED_{event_type.upper()}",
         resource=resource,
         status="warning",
