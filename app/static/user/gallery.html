@@ -632,24 +632,25 @@
             }
         });
 
-        // 3. DevTools Dimension Heuristic (Hardened)
+        // 3. DevTools Dimension Heuristic (Optimized for Tiling WMs)
+        let resizeTimeout;
         window.addEventListener('resize', () => {
-            const threshold = 160;
-            const isMaximized = window.outerWidth >= screen.availWidth && window.outerHeight >= screen.availHeight;
-            
-            const widthDiff = window.outerWidth - window.innerWidth;
-            const heightDiff = window.outerHeight - window.innerHeight;
-            
-            // Trigger ONLY if maximized (where browser chrome is constant) OR if diff is extreme
-            // This prevents false positives from manual dragging while docked
-            if (isMaximized && (widthDiff > threshold || heightDiff > threshold)) {
-                const shield = document.getElementById('screen-shield');
-                if (shield.classList.contains('hidden')) {
-                    reportSecurityStrike('DEVTOOLS_RESIZE_HEURISTIC', 'Window State');
-                    shield.classList.remove('hidden');
-                    shield.classList.add('flex');
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                const threshold = 300; // Increased for tiling WM safety
+                const widthDiff = window.outerWidth - window.innerWidth;
+                const heightDiff = window.outerHeight - window.innerHeight;
+                
+                // Only trigger if the difference is substantial and sustained
+                if (widthDiff > threshold || heightDiff > threshold) {
+                    const shield = document.getElementById('screen-shield');
+                    if (shield.classList.contains('hidden')) {
+                        reportSecurityStrike('DEVTOOLS_RESIZE_HEURISTIC', 'Window State');
+                        shield.classList.remove('hidden');
+                        shield.classList.add('flex');
+                    }
                 }
-            }
+            }, 500); // 500ms debounce to ignore snapping transitions
         });
 
         // 4. Page Visibility / Screen Capture Shield
