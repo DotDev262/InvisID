@@ -14,8 +14,10 @@ async def log_security_strike(
     Records an unauthorized capture attempt (Right-click, Print, Screenshot etc.)
     triggered by the client-side defense wrapper.
     """
+    user_identity = current_user.employee_id if current_user.role == "employee" else "Admin"
+    
     record_log(
-        user_id=current_user.id,
+        user_id=user_identity,
         event_type=f"UNAUTHORIZED_{event_type.upper()}",
         resource=resource,
         status="warning",
