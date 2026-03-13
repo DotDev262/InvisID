@@ -44,9 +44,14 @@ def process_investigation_task(job_id: str, file_path: str, original_filename: s
         conn.close()
 
         # 2. Extract watermark with alignment
-        employee_id, confidence = extract_watermark(file_path, master_data=master_bytes)
+        # Unpack 3 values (ID, Confidence, AlignedImg)
+        employee_id, confidence, aligned_img = extract_watermark(file_path, master_data=master_bytes)
         
         if employee_id and employee_id != "UNKNOWN":
+            # RECONSTRUCTION: Save the perfectly aligned image as the formal evidence
+            if aligned_img is not None:
+                cv2.imwrite(file_path, aligned_img)
+                
             result = {
                 "leaked_by": employee_id,
                 "confidence": confidence,
