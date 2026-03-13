@@ -60,7 +60,8 @@ def run_exhaustive_audit():
         for name, attack_func in attacks:
             try:
                 attacked = attack_func(watermarked)
-                extracted_id, conf = extract_watermark(attacked, master_data=img)
+                # Correctly unpack 3 values (ID, Conf, AlignedImg)
+                extracted_id, conf, aligned_img = extract_watermark(attacked, master_data=img)
                 
                 status = "✅ PASS" if extracted_id == target_id else "❌ FAIL"
                 if extracted_id == target_id: asset_passed += 1

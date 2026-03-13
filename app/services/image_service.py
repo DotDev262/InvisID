@@ -1,338 +1,233 @@
 import cv2
 import numpy as np
-import json
-import base64
 import os
 import pywt
+import base64
+from typing import Optional, Tuple
 from reedsolo import RSCodec
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
+
 from app.config import get_settings
 
 settings = get_settings()
 
-# --- Ghost-Cloud Architecture Constants ---
-BIT_COUNT = 16 
-RS_ECC_BYTES = 20 
+# --- Configuration Constants (STABLE) ---
+BIT_COUNT = 16
+RS_ECC_BYTES = 20
 rs = RSCodec(RS_ECC_BYTES)
-BASE_DELTA = 50.0  # Ultra-low for zero visibility
+BASE_DELTA = 70.0 # Peak robustness for 8K blur survival
 PAYLOAD_LEN = 176
+
+DEFAULT_VALID_LABELS = ["ADMIN", "EMP-001", "EMP-002", "EMP-003", "CON-004", "INT-005", "GST-006", "EMP-007", "EMP-008", "EMP-999"]
+BURNIN_ALPHA = 0.06
 
 # --- MATHEMATICAL ENGINE ---
 
 def calculate_jnd_mask(channel: np.ndarray, target_shape: tuple) -> np.ndarray:
-    """Mathematical Just Noticeable Difference (JND) Model."""
     gx = cv2.Sobel(channel, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(channel, cv2.CV_32F, 0, 1, ksize=3)
     mag = cv2.magnitude(gx, gy)
     mask = cv2.resize(mag, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_AREA)
     return 0.5 + (mask / (np.max(mask) + 1e-5)) * 3.0
 
-def qim_mod(c: float, m: int, delta: float) -> float:
-    """Standard QIM Modulation."""
-    if m == 1:
-        return np.round(c / delta) * delta + delta / 4
-    else:
-        return np.round(c / delta) * delta - delta / 4
-
-def qim_demod(c_star: float, delta: float) -> int:
-    """Standard QIM Demodulation."""
-    v1 = np.round(c_star / delta) * delta + delta / 4
-    v0 = np.round(c_star / delta) * delta - delta / 4
-    return 1 if np.abs(c_star - v1) < np.abs(c_star - v0) else 0
+def qim_mod(c: np.ndarray, m: np.ndarray, delta: np.ndarray) -> np.ndarray:
+    return np.round(c / delta) * delta + np.where(m == 1, delta / 4, -delta / 4)
 
 def rs_encode(bits: list) -> list:
-    """RS Armor."""
-    byte_data = bytes(int("".join(map(str, bits[i:i+8])), 2) for i in range(0, len(bits), 8))
+    byte_data = bytes(int("".join(map(str, bits[i : i + 8])), 2) for i in range(0, len(bits), 8))
     ecc_data = rs.encode(byte_data)
     res = []
-    for b in ecc_data: res.extend([int(x) for x in format(b, '08b')])
+    for b in ecc_data: res.extend([int(x) for x in format(b, "08b")])
     return res
 
-def rs_decode(bits: list) -> list:
-    """RS Recovery."""
+def rs_decode(bits: list) -> Optional[list]:
     try:
-        byte_data = bytes(int("".join(map(str, bits[i:i+8])), 2) for i in range(0, len(bits), 8))
+        byte_data = bytes(int("".join(map(str, bits[i : i + 8])), 2) for i in range(0, len(bits), 8))
         decoded = rs.decode(byte_data)[0]
-        res = []
-        for b in decoded: res.extend([int(x) for x in format(b, '08b')])
-        return res
-    except: return []
+        return [int(x) for x in "".join(format(b, "08b") for b in decoded)]
+    except: return None
 
-# --- CRYPTO & ALIGNMENT ---
-
-def get_crypto_key():
-    return settings.MASTER_SECRET.encode()[:32].ljust(32, b'\0')
+# --- CRYPTO ---
 
 def encrypt_employee_id(emp_id: str) -> str:
-    key = get_crypto_key()
+    key = settings.MASTER_SECRET.encode()[:32].ljust(32, b'\0')
     cipher = AES.new(key, AES.MODE_ECB)
-    ct_bytes = cipher.encrypt(pad(emp_id.encode(), AES.block_size))
-    return base64.b64encode(ct_bytes).decode('utf-8')
+    return base64.b64encode(cipher.encrypt(pad(emp_id.encode(), 16))).decode()
 
-def decrypt_employee_id(cipher_text: str) -> str:
+def decrypt_employee_id(cipher_text: str) -> Optional[str]:
     try:
-        key = get_crypto_key()
+        key = settings.MASTER_SECRET.encode()[:32].ljust(32, b'\0')
         cipher = AES.new(key, AES.MODE_ECB)
-        decoded_ct = base64.b64decode(cipher_text)
-        pt = unpad(cipher.decrypt(decoded_ct), AES.block_size)
-        return pt.decode('utf-8')
-    except: return "UNKNOWN"
+        return unpad(cipher.decrypt(base64.b64decode(cipher_text)), 16).decode()
+    except: return None
 
-def align_leak_to_master(leak_img: np.ndarray, master_img: np.ndarray) -> np.ndarray:
-    """Multi-Scale ASIFT Alignment with Moiré Eraser."""
-    def get_affine_tilt(img, tilt, phi):
-        h, w = img.shape[:2]
-        t_mat = np.float32([[1, 0, 0], [0, 1.0/tilt, 0]])
-        r_mat = cv2.getRotationMatrix2D((w/2, h/2), phi, 1)
-        combined = np.dot(np.vstack([t_mat, [0,0,1]]), np.vstack([r_mat, [0,0,1]]))[:2]
-        return cv2.warpAffine(img, combined, (w, h), borderMode=cv2.BORDER_REPLICATE)
+# --- ALIGNMENT ---
 
+def align_leak_to_master(leak_img: np.ndarray, master_img: np.ndarray) -> Optional[np.ndarray]:
     try:
-        h_orig, w_orig = master_img.shape[:2]
-        scale = 2000.0 / max(h_orig, w_orig) if max(h_orig, w_orig) > 2500 else 1.0
-        h_s, w_s = int(h_orig * scale), int(w_orig * scale)
-        m_scaled = cv2.resize(cv2.cvtColor(master_img, cv2.COLOR_BGR2GRAY), (w_s, h_s), interpolation=cv2.INTER_AREA)
-        l_scaled = cv2.resize(cv2.cvtColor(leak_img, cv2.COLOR_BGR2GRAY), (w_s, h_s), interpolation=cv2.INTER_AREA)
+        h_o, w_o = master_img.shape[:2]
+        s = 2000.0 / max(h_o, w_o) if max(h_o, w_o) > 2500 else 1.0
+        m_s = cv2.medianBlur(cv2.resize(cv2.cvtColor(master_img, cv2.COLOR_BGR2GRAY), (int(w_o*s), int(h_o*s))), 7)
+        l_s = cv2.medianBlur(cv2.resize(cv2.cvtColor(leak_img, cv2.COLOR_BGR2GRAY), (int(w_o*s), int(h_o*s))), 7)
+        sift = cv2.SIFT_create(20000) # Increased for 8K precision
+        kp_m, des_m = sift.detectAndCompute(m_s, None)
+        kp_l, des_l = sift.detectAndCompute(l_s, None)
+        if des_m is None or des_l is None: return None
         
-        # Moiré Eraser: Heavy median blur eliminates screen pixel-grids while preserving edges
-        m_scaled = cv2.medianBlur(m_scaled, 7)
-        l_scaled = cv2.medianBlur(l_scaled, 7)
+        matcher = cv2.FlannBasedMatcher(dict(algorithm=1, trees=5), dict(checks=100))
+        matches = matcher.knnMatch(des_l, des_m, k=2)
+        good = [m for m, n in matches if m.distance < 0.7 * n.distance]
         
-        sift = cv2.SIFT_create(15000)
-        kp_m, des_m = sift.detectAndCompute(m_scaled, None)
-        if des_m is None: return leak_img
-
-        best_M = None
-        max_good = 0
-        for t in [1.0, 1.5, 2.2]:
-            for p in [0, 45, 90, 135]:
-                sim_leak = get_affine_tilt(l_scaled, t, p) if t > 1.0 or p > 0 else l_scaled
-                kp_l, des_l = sift.detectAndCompute(sim_leak, None)
-                if des_l is None: continue
-                matches = cv2.FlannBasedMatcher(dict(algorithm=1, trees=5), dict(checks=50)).knnMatch(des_l, des_m, k=2)
-                good = [m for m, n in matches if m.distance < 0.75 * n.distance]
-                if len(good) > max_good:
-                    max_good = len(good)
-                    if len(good) > 10:
-                        src_pts = np.float32([kp_l[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
-                        dst_pts = np.float32([kp_m[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
-                        M, _ = cv2.findHomography(src_pts, dst_pts, cv2.USAC_MAGSAC, 10.0)
-                        best_M = M
-
-        if best_M is not None:
-            if scale != 1.0:
-                S = np.diag([1/scale, 1/scale, 1])
-                best_M = np.dot(S, np.dot(best_M, np.linalg.inv(S)))
-            return cv2.warpPerspective(leak_img, best_M, (w_orig, h_orig), borderMode=cv2.BORDER_REPLICATE)
+        if len(good) > 10:
+            # Use MAGSAC for elite outlier rejection
+            M, mask = cv2.findHomography(np.float32([kp_l[m.queryIdx].pt for m in good]), 
+                                       np.float32([kp_m[m.trainIdx].pt for m in good]), 
+                                       cv2.USAC_MAGSAC, 8.0, maxIters=2000)
+            if s != 1.0:
+                S = np.diag([1/s, 1/s, 1]); M = np.dot(S, np.dot(M, np.linalg.inv(S)))
+            return cv2.warpPerspective(leak_img, M, (w_o, h_o), borderMode=cv2.BORDER_REPLICATE)
     except: pass
-    return leak_img
+    return None
 
-def suppress_moire_noise(img: np.ndarray) -> np.ndarray:
-    """Filters out Moiré patterns and screen-flicker noise."""
-    return cv2.medianBlur(img, 3)
-
-def log_polar_resync(leak_img: np.ndarray, master_img: np.ndarray) -> np.ndarray:
-    """Log-Polar Fourier-Mellin Alignment."""
+def log_polar_resync(leak_img: np.ndarray, master_img: np.ndarray) -> Optional[np.ndarray]:
     try:
-        h, w = master_img.shape[:2]
-        center = (w // 2, h // 2)
-        radius = min(h, w) / 2
-        
-        def get_mag_spectrum(img):
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            dft = cv2.dft(np.float32(gray), flags=cv2.DFT_COMPLEX_OUTPUT)
-            dft_shift = np.fft.fftshift(dft)
-            mag = cv2.magnitude(dft_shift[:,:,0], dft_shift[:,:,1])
-            return cv2.log(mag + 1)
-
-        mag_m = get_mag_spectrum(master_img)
-        mag_l = get_mag_spectrum(leak_img)
-        flags = cv2.WARP_POLAR_LOG | cv2.INTER_LINEAR | cv2.WARP_FILL_OUTLIERS
-        lp_m = cv2.warpPolar(mag_m, (w, h), center, radius, flags)
-        lp_l = cv2.warpPolar(mag_l, (w, h), center, radius, flags)
-        (dx, dy), response = cv2.phaseCorrelate(lp_m, lp_l)
-        rotation = dy * 360.0 / h
-        scale = np.exp(dx * np.log(radius) / w)
-        M = cv2.getRotationMatrix2D(center, rotation, 1.0/scale)
+        h, w = master_img.shape[:2]; c = (w//2, h//2); r = min(h, w)/2
+        def get_mag(img):
+            d = cv2.dft(np.float32(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)), flags=cv2.DFT_COMPLEX_OUTPUT)
+            return cv2.log(cv2.magnitude(np.fft.fftshift(d)[:,:,0], np.fft.fftshift(d)[:,:,1]) + 1)
+        lp_m = cv2.warpPolar(get_mag(master_img), (w, h), c, r, cv2.WARP_POLAR_LOG)
+        lp_l = cv2.warpPolar(get_mag(leak_img), (w, h), c, r, cv2.WARP_POLAR_LOG)
+        (dx, dy), _ = cv2.phaseCorrelate(lp_m, lp_l)
+        M = cv2.getRotationMatrix2D(c, dy * 360.0 / h, 1.0 / np.exp(dx * np.log(r) / w))
         return cv2.warpAffine(leak_img, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
-    except: return leak_img
+    except: return None
 
-# --- CORE PIPELINE ---
+# --- CORE ---
 
-def embed_watermark(input_data: any, watermark_data: str, output_path: str = None) -> any:
-    """Forensic Embedding with Ghost-Cloud detail-band DWT-QIM."""
-    if isinstance(input_data, bytes):
-        img = cv2.imdecode(np.frombuffer(input_data, np.uint8), cv2.IMREAD_COLOR)
+def embed_watermark(input_data: any, watermark_data: str, output_path: Optional[str] = None) -> any:
+    if isinstance(input_data, bytes): img = cv2.imdecode(np.frombuffer(input_data, np.uint8), cv2.IMREAD_COLOR)
     elif isinstance(input_data, np.ndarray): img = input_data.copy()
     else: img = cv2.imread(input_data)
-    if img is None: raise ValueError("Invalid image")
+    if img is None: return None
 
-    # 1. Prepare Armored Payload
-    cipher = encrypt_employee_id(watermark_data)
-    raw_bits = [int(b) for b in "".join(format(ord(c), '08b') for c in cipher[:2])]
-    payload = rs_encode(raw_bits)
-
-    # 2. Colorspace & DWT
+    payload = np.array(rs_encode([int(b) for b in "".join(format(ord(c), "08b") for c in encrypt_employee_id(watermark_data)[:2])]))
     ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
     h, w = img.shape[:2]
-    level = 3 if max(h, w) > 2000 else 2
     
     for ch_idx in [0, 2]:
         chan = ycrcb[:, :, ch_idx].astype(np.float32)
-        coeffs = pywt.wavedec2(chan, 'haar', level=level)
+        coeffs = pywt.wavedec2(chan, "haar", level=2)
+        # LL is coeffs[0], Detail bands are coeffs[1]
+        LL = coeffs[0]; (LH, HL, HH) = coeffs[1]
         
-        # LL band (coeffs[0]) is preserved. LH, HL, HH are modulated.
-        # coeffs[1] is (LH, HL, HH) for level decomposition
-        LL = coeffs[0]
-        LH, HL, HH = coeffs[1]
+        jnd_ll = calculate_jnd_mask(chan, LL.shape)
+        jnd_detail = calculate_jnd_mask(chan, HL.shape)
         
-        jnd = calculate_jnd_mask(chan, HL.shape)
+        # VECTORIZED DUAL-BAND EMBEDDING (LL + HL/LH)
+        payload_ll = np.tile(payload, (LL.size // PAYLOAD_LEN) + 1)[:LL.size].reshape(LL.shape)
+        payload_detail = np.tile(payload, (HL.size // PAYLOAD_LEN) + 1)[:HL.size].reshape(HL.shape)
+        
+        d_ll = (BASE_DELTA * 0.7 if ch_idx == 0 else BASE_DELTA) * jnd_ll
+        d_detail = (BASE_DELTA * 0.7 if ch_idx == 0 else BASE_DELTA) * jnd_detail
+        
+        coeffs[0] = qim_mod(LL, payload_ll, d_ll)
+        HL = qim_mod(HL, payload_detail, d_detail)
+        LH = qim_mod(LH, payload_detail, d_detail)
+        coeffs[1] = (LH, HL, HH)
+        
+        chan_mod = pywt.waverec2(coeffs, "haar")[:h, :w]
+        ycrcb[:, :, ch_idx] = np.clip(chan + cv2.GaussianBlur(chan_mod - chan, (3, 3), 0), 0, 255).astype(np.uint8)
 
-        # 3. Dynamic QIM in Detail Bands (HL + LH)
-        h_s, w_s = HL.shape
-        idx = 0
-        for r in range(h_s):
-            for c in range(w_s):
-                # Pattern Sparsity Jitter
-                if (r + c) % 2 == 0:
-                    d = (BASE_DELTA * 0.7 if ch_idx == 0 else BASE_DELTA) * jnd[r, c]
-                    HL[r, c] = qim_mod(HL[r, c], payload[idx], d)
-                    LH[r, c] = qim_mod(LH[r, c], payload[idx], d)
-                    idx = (idx + 1) % PAYLOAD_LEN
-
-        # 4. Reconstruct & Edge-Feather
-        coeffs_mod = list(coeffs)
-        coeffs_mod[1] = (LH, HL, HH)
-        chan_mod = pywt.waverec2(coeffs_mod, 'haar')
-        chan_mod = chan_mod[:chan.shape[0], :chan.shape[1]]
-        
-        # RESIDUAL FEATHERING: Blurs the diff map to integrate edges perfectly
-        residual = chan_mod - chan
-        k_size = 3 if max(h, w) < 4000 else 5
-        residual_smoothed = cv2.GaussianBlur(residual, (k_size, k_size), 0)
-        
-        ycrcb[:, :, ch_idx] = np.clip(chan + residual_smoothed, 0, 255).astype(np.uint8)
-
-    final = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
+    final = dwt_res = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
     
-    # --- HYBRID BURN-IN LAYER: Analog Hole Security ---
-    # Overlay faint tiled ID text with Adaptive Contrast
-    h, w = final.shape[:2]
-    overlay = final.copy()
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = max(0.6, min(h, w) / 1500.0)
-    
-    step_y = int(h / 6)
-    step_x = int(w / 4)
-    for y in range(step_y // 2, h, step_y):
-        for x in range(step_x // 2, w, step_x):
-            sample = final[max(0, y-20):min(h, y+20), max(0, x-20):min(w, x+100)]
-            avg_brightness = np.mean(cv2.cvtColor(sample, cv2.COLOR_BGR2GRAY))
-            color = (255, 255, 255) if avg_brightness < 128 else (0, 0, 0)
-            cv2.putText(overlay, watermark_data, (x, y), font, font_scale, color, 2, cv2.LINE_AA)
-            
-    final = cv2.addWeighted(overlay, 0.06, final, 0.94, 0)
+    # Adaptive Burn-In (6%)
+    overlay = dwt_res.copy(); gray = cv2.cvtColor(final, cv2.COLOR_BGR2GRAY)
+    txt = f"CONFIDENTIAL - {watermark_data}"
+    (tw, th), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+    for y in range(0, h, 80):
+        for x in range(0, w, int(tw*1.5)):
+            color = (255,255,255) if np.mean(gray[max(0,y):min(h,y+th), max(0,x):min(w,x+tw)]) < 128 else (0,0,0)
+            cv2.putText(overlay, txt, (x, y+th), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
+    final = cv2.addWeighted(final, 0.94, overlay, 0.06, 0)
 
     if output_path:
         cv2.imwrite(output_path, final)
-        try:
-            with open(output_path + ".exif", "w") as f: f.write(cipher)
-        except: pass
+        with open(output_path + ".exif", "w") as f: f.write(encrypt_employee_id(watermark_data))
         return output_path
     return final
 
-def scan_orientation(img: np.ndarray, master_ycrcb: np.ndarray = None) -> str:
-    """Ghost-Cloud extraction with majority voting gain."""
-    ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
-    global_labels = ["ADMIN", "EMP-001", "EMP-002", "EMP-003", "CON-004", "INT-005", "GST-006", "EMP-007", "EMP-008", "EMP-999"]
-    h, w = img.shape[:2]
-    level = 3 if max(h, w) > 2000 else 2
+def scan_orientation(img: np.ndarray, master_ycrcb: Optional[np.ndarray] = None, valid_labels: Optional[list[str]] = None) -> Optional[str]:
+    ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb); labels = valid_labels or DEFAULT_VALID_LABELS
     
+    # SEQUENTIAL CHANNEL SCANNING (Priority: Y then Cr)
     for ch_idx in [0, 2]:
-        chan = ycrcb[:, :, ch_idx].astype(np.float32)
-        jnd_chan = master_ycrcb[:, :, ch_idx] if master_ycrcb is not None else chan
-        
+        chan = ycrcb[:, :, ch_idx].astype(np.float32); jnd_c = master_ycrcb[:,:,ch_idx] if master_ycrcb is not None else chan
         try:
-            coeffs = pywt.wavedec2(chan, 'haar', level=level)
-            bands = [coeffs[1][0], coeffs[1][1]]
+            coeffs = pywt.wavedec2(chan, "haar", level=2)
+            # Bands: LL, LH, HL
+            bands = [coeffs[0], coeffs[1][0], coeffs[1][1]]
         except: continue
-
-        jnd = calculate_jnd_mask(jnd_chan, bands[0].shape)
-        delta_map = (BASE_DELTA * 0.7 if ch_idx == 0 else BASE_DELTA) * jnd
         
         votes = [[] for _ in range(PAYLOAD_LEN)]
         for band in bands:
-            v1 = np.round(band / delta_map) * delta_map + delta_map / 4
-            v0 = np.round(band / delta_map) * delta_map - delta_map / 4
-            bits_map = (np.abs(band - v1) < np.abs(band - v0)).astype(np.int8)
-            
-            flat = bits_map.flatten()
-            modulated_indices = np.where(np.indices(bits_map.shape).sum(axis=0).flatten() % 2 == 0)[0]
-            flat_filtered = flat[modulated_indices]
-            
-            max_idx = (len(flat_filtered) // PAYLOAD_LEN) * PAYLOAD_LEN
+            jnd = calculate_jnd_mask(jnd_c, band.shape)
+            d_map = (BASE_DELTA * 0.7 if ch_idx == 0 else BASE_DELTA) * jnd
+            v1, v0 = np.round(band / d_map) * d_map + d_map/4, np.round(band / d_map) * d_map - d_map/4
+            bits = (np.abs(band - v1) < np.abs(band - v0)).astype(np.int8).flatten()
+            max_idx = (len(bits) // PAYLOAD_LEN) * PAYLOAD_LEN
             if max_idx > 0:
-                reshaped = flat_filtered[:max_idx].reshape(-1, PAYLOAD_LEN)
-                for i in range(PAYLOAD_LEN):
-                    votes[i].extend(reshaped[:, i].tolist())
+                reshaped = bits[:max_idx].reshape(-1, PAYLOAD_LEN)
+                for i in range(PAYLOAD_LEN): votes[i].extend(reshaped[:, i].tolist())
         
         if any(votes):
-            extracted_ecc = [1 if sum(v) > len(v)/2 else 0 for v in votes]
-            decoded = rs_decode(extracted_ecc)
-            if len(decoded) >= BIT_COUNT:
-                marker = "".join(chr(int("".join(map(str, decoded[i:i+8])), 2)) for i in range(0, BIT_COUNT, 8))
-                for label in global_labels:
-                    if encrypt_employee_id(label)[:2] == marker: return label
+            dec = rs_decode([1 if sum(v) > len(v)/2 else 0 for v in votes])
+            if dec:
+                m = "".join(chr(int("".join(map(str, dec[i:i+8])), 2)) for i in range(0, BIT_COUNT, 8))
+                for label in labels:
+                    if encrypt_employee_id(label)[:2] == m: return label
     return None
 
-def extract_watermark(input_data: any, master_data: any = None, ignore_exif: bool = False) -> tuple[str, float, np.ndarray]:
-    """Production Forensic Extraction Engine with Multi-Value Return (ID, Conf, AlignedImg)."""
+def extract_watermark(input_data: any, master_data: any = None, ignore_exif: bool = False, valid_labels: Optional[list[str]] = None) -> Tuple[Optional[str], float, Optional[np.ndarray]]:
     if not ignore_exif and isinstance(input_data, str) and os.path.exists(input_data + ".exif"):
         try:
             with open(input_data + ".exif", "r") as f:
-                label = decrypt_employee_id(f.read().strip())
-                if label != "UNKNOWN": return label, 1.0, None
+                l = decrypt_employee_id(f.read().strip())
+                if l: return l, 1.0, None
         except: pass
-
-    if isinstance(input_data, bytes):
-        img = cv2.imdecode(np.frombuffer(input_data, np.uint8), cv2.IMREAD_COLOR)
+    if isinstance(input_data, bytes): img = cv2.imdecode(np.frombuffer(input_data, np.uint8), cv2.IMREAD_COLOR)
     elif isinstance(input_data, np.ndarray): img = input_data
     else: img = cv2.imread(input_data)
-    if img is None: return "UNKNOWN", 0.0, None
-
-    best_aligned = img.copy()
-    m_ycrcb, m_arr = None, None
+    if img is None: return None, 0.0, None
+    
+    m_ycrcb = None; m_arr = None
     if master_data is not None:
-        if isinstance(master_data, bytes):
-            m_arr = cv2.imdecode(np.frombuffer(master_data, np.uint8), cv2.IMREAD_COLOR)
-        elif hasattr(master_data, 'convert'): # PIL Image
-            m_arr = cv2.cvtColor(np.array(master_data.convert("RGB")), cv2.COLOR_RGB2BGR)
+        if isinstance(master_data, bytes): m_arr = cv2.imdecode(np.frombuffer(master_data, np.uint8), cv2.IMREAD_COLOR)
+        elif hasattr(master_data, "convert"): m_arr = cv2.cvtColor(np.array(master_data.convert("RGB")), cv2.COLOR_RGB2BGR)
         else: m_arr = master_data
         if m_arr is not None: m_ycrcb = cv2.cvtColor(m_arr, cv2.COLOR_BGR2YCrCb)
 
-    # STAGE 1: Fast Path
-    for angle in [0, 90, 180, 270]:
-        rot = img if angle == 0 else np.rot90(img, angle // 90)
-        res = scan_orientation(rot, m_ycrcb)
-        if res: return res, 1.0, rot
-
-    # STAGE 2: Geometric Alignment (ASIFT + Log-Polar)
+    # 1. ALIGNMENT-FIRST PIPELINE
     if m_arr is not None:
-        img_asift = align_leak_to_master(img, m_arr)
-        res = scan_orientation(img_asift, m_ycrcb)
-        if res: return res, 0.98, img_asift
+        img_a = align_leak_to_master(img, m_arr)
+        if img_a is not None:
+            # Try 4 orientations on aligned image
+            for a in [0, 90, 180, 270]:
+                rot = np.rot90(img_a, a//90) if a != 0 else img_a
+                res = scan_orientation(rot, m_ycrcb, valid_labels)
+                if res: return res, 0.98, rot
         
-        img_lp = log_polar_resync(img, m_arr)
-        res = scan_orientation(img_lp, m_ycrcb)
-        if res: return res, 0.97, img_lp
-        
-    # STAGE 3: Blind Search Fallback
-    h, w = img.shape[:2]
-    for angle in [-15, 15, -30, 30, -45, 45]:
-        M = cv2.getRotationMatrix2D((w/2, h/2), angle, 1)
-        rot = cv2.warpAffine(img, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
-        res = scan_orientation(rot, m_ycrcb)
-        if res: return res, 0.90, rot
+        img_l = log_polar_resync(img, m_arr)
+        if img_l is not None:
+            for a in [0, 90, 180, 270]:
+                rot = np.rot90(img_l, a//90) if a != 0 else img_l
+                res = scan_orientation(rot, m_ycrcb, valid_labels)
+                if res: return res, 0.97, rot
 
-    return "UNKNOWN", 0.0, best_aligned
+    # 2. FAST PATH FALLBACK
+    for a in [0, 90, 180, 270]:
+        rot = np.rot90(img, a//90) if a != 0 else img
+        res = scan_orientation(rot, m_ycrcb, valid_labels)
+        if res: return res, 1.0, rot
+        
+    return None, 0.0, img.copy()
