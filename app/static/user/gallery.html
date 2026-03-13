@@ -408,40 +408,60 @@
 
         function initSecureCanvases() {
             const canvases = document.querySelectorAll('.secure-canvas');
+            
+            // Shared observer to save resources
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    const canvas = entry.target;
+                    if (entry.isIntersecting) {
+                        canvas.dataset.visible = "true";
+                    } else {
+                        canvas.dataset.visible = "false";
+                    }
+                });
+            }, { threshold: 0.1 });
+
             canvases.forEach(canvas => {
-                const ctx = canvas.getContext('2d');
+                observer.observe(canvas);
+                const ctx = canvas.getContext('2d', { alpha: false }); // Optimization: opaque canvas
                 const img = new Image();
                 const empId = canvas.getAttribute('data-emp');
+                
                 img.onload = () => {
                     canvas.width = img.width;
                     canvas.height = img.height;
                     
-                    // Animation loop for dynamic visual noise
+                    // Pre-render the pattern to a dedicated offscreen canvas
+                    const patternCanvas = document.createElement('canvas');
+                    const pCtx = patternCanvas.getContext('2d');
+                    patternCanvas.width = 250;
+                    patternCanvas.height = 150;
+                    pCtx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+                    pCtx.font = '24px monospace';
+                    pCtx.rotate(-Math.PI / 4);
+                    pCtx.fillText(empId, 20, 80);
+                    const pattern = ctx.createPattern(patternCanvas, 'repeat');
+
                     let offset = 0;
                     function drawProtected() {
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        ctx.drawImage(img, 0, 0);
-                        
-                        // Add moving text overlay (Visual Noise)
-                        ctx.fillStyle = 'rgba(255, 255, 255, 0.03)'; // Very faint
-                        ctx.font = '24px monospace';
-                        ctx.save();
-                        ctx.translate(canvas.width/2, canvas.height/2);
-                        ctx.rotate(-Math.PI / 4);
-                        for(let i = -10; i < 10; i++) {
-                            for(let j = -10; j < 10; j++) {
-                                ctx.fillText(empId, i*150 + offset, j*100 + (offset/2));
-                            }
+                        // Only animate if visible in viewport
+                        if (canvas.dataset.visible === "true") {
+                            ctx.drawImage(img, 0, 0);
+                            
+                            // Efficient pattern fill
+                            ctx.fillStyle = pattern;
+                            ctx.save();
+                            ctx.translate(offset, offset/2);
+                            ctx.fillRect(-offset, -offset/2, canvas.width, canvas.height);
+                            ctx.restore();
+                            
+                            offset = (offset + 0.4) % 250;
                         }
-                        ctx.restore();
-                        
-                        offset = (offset + 0.5) % 150;
                         requestAnimationFrame(drawProtected);
                     }
                     drawProtected();
                 };
                 img.src = canvas.getAttribute('data-src');
-                // Remove base64 from DOM immediately
                 canvas.removeAttribute('data-src');
             });
         }

@@ -65,28 +65,65 @@ def decrypt_employee_id(cipher_text: str) -> Optional[str]:
 # --- ALIGNMENT ---
 
 def align_leak_to_master(leak_img: np.ndarray, master_img: np.ndarray) -> Optional[np.ndarray]:
+    """Hierarchical Pyramid Alignment for Ultra-High Resolution (8K) Assets."""
     try:
         h_o, w_o = master_img.shape[:2]
-        s = 2000.0 / max(h_o, w_o) if max(h_o, w_o) > 2500 else 1.0
-        m_s = cv2.medianBlur(cv2.resize(cv2.cvtColor(master_img, cv2.COLOR_BGR2GRAY), (int(w_o*s), int(h_o*s))), 7)
-        l_s = cv2.medianBlur(cv2.resize(cv2.cvtColor(leak_img, cv2.COLOR_BGR2GRAY), (int(w_o*s), int(h_o*s))), 7)
-        sift = cv2.SIFT_create(20000) # Increased for 8K precision
-        kp_m, des_m = sift.detectAndCompute(m_s, None)
-        kp_l, des_l = sift.detectAndCompute(l_s, None)
-        if des_m is None or des_l is None: return None
         
-        matcher = cv2.FlannBasedMatcher(dict(algorithm=1, trees=5), dict(checks=100))
-        matches = matcher.knnMatch(des_l, des_m, k=2)
-        good = [m for m, n in matches if m.distance < 0.7 * n.distance]
+        # STAGE 1: COARSE ALIGNMENT (1000px)
+        # Find rough homography quickly
+        s_c = 1000.0 / max(h_o, w_o)
+        m_c = cv2.resize(cv2.cvtColor(master_img, cv2.COLOR_BGR2GRAY), (int(w_o*s_c), int(h_o*s_c)))
+        l_c = cv2.resize(cv2.cvtColor(leak_img, cv2.COLOR_BGR2GRAY), (int(w_o*s_c), int(h_o*s_c)))
         
-        if len(good) > 10:
-            # Use MAGSAC for elite outlier rejection
-            M, mask = cv2.findHomography(np.float32([kp_l[m.queryIdx].pt for m in good]), 
-                                       np.float32([kp_m[m.trainIdx].pt for m in good]), 
-                                       cv2.USAC_MAGSAC, 8.0, maxIters=2000)
-            if s != 1.0:
-                S = np.diag([1/s, 1/s, 1]); M = np.dot(S, np.dot(M, np.linalg.inv(S)))
-            return cv2.warpPerspective(leak_img, M, (w_o, h_o), borderMode=cv2.BORDER_REPLICATE)
+        sift = cv2.SIFT_create(8000)
+        kp_m_c, des_m_c = sift.detectAndCompute(m_c, None)
+        kp_l_c, des_l_c = sift.detectAndCompute(l_c, None)
+        
+        if des_m_c is None or des_l_c is None: return None
+        
+        matcher = cv2.FlannBasedMatcher(dict(algorithm=1, trees=5), dict(checks=50))
+        matches_c = matcher.knnMatch(des_l_c, des_m_c, k=2)
+        good_c = [m for m, n in matches_c if m.distance < 0.7 * n.distance]
+        
+        if len(good_c) < 10: return None
+        
+        # Initial Coarse Matrix
+        M_c, _ = cv2.findHomography(np.float32([kp_l_c[m.queryIdx].pt for m in good_c]), 
+                                   np.float32([kp_m_c[m.trainIdx].pt for m in good_c]), 
+                                   cv2.USAC_MAGSAC, 10.0)
+        
+        # STAGE 2: FINE ALIGNMENT (4000px)
+        # Re-run at 4x resolution for sub-pixel 8K precision
+        s_f = 4000.0 / max(h_o, w_o) if max(h_o, w_o) > 4000 else 1.0
+        m_f = cv2.resize(cv2.cvtColor(master_img, cv2.COLOR_BGR2GRAY), (int(w_o*s_f), int(h_o*s_f)))
+        l_f = cv2.resize(cv2.cvtColor(leak_img, cv2.COLOR_BGR2GRAY), (int(w_o*s_f), int(h_o*s_f)))
+        
+        # Pre-align leak using coarse matrix before fine detection
+        M_scaled = np.dot(np.diag([s_f/s_c, s_f/s_c, 1]), np.dot(M_c, np.diag([s_c/s_f, s_c/s_f, 1])))
+        l_f_pre = cv2.warpPerspective(l_f, M_scaled, (m_f.shape[1], m_f.shape[0]))
+        
+        sift_f = cv2.SIFT_create(25000)
+        kp_m_f, des_m_f = sift_f.detectAndCompute(m_f, None)
+        kp_l_f, des_l_f = sift_f.detectAndCompute(l_f_pre, None)
+        
+        if des_m_f is not None and des_l_f is not None:
+            matches_f = matcher.knnMatch(des_l_f, des_m_f, k=2)
+            good_f = [m for m, n in matches_f if m.distance < 0.7 * n.distance]
+            if len(good_f) > 20:
+                M_f, _ = cv2.findHomography(np.float32([kp_l_f[m.queryIdx].pt for m in good_f]), 
+                                           np.float32([kp_m_f[m.trainIdx].pt for m in good_f]), 
+                                           cv2.USAC_MAGSAC, 5.0, maxIters=3000)
+                # Combine transformations
+                M_final = np.dot(M_f, M_scaled)
+                # Rescale to original 8K dimensions
+                S = np.diag([1/s_f, 1/s_f, 1])
+                M_orig = np.dot(S, np.dot(M_final, np.linalg.inv(S)))
+                return cv2.warpPerspective(leak_img, M_orig, (w_o, h_o), borderMode=cv2.BORDER_REPLICATE)
+
+        # Fallback to coarse if fine fails
+        S_c = np.diag([1/s_c, 1/s_c, 1])
+        M_orig_c = np.dot(S_c, np.dot(M_c, np.linalg.inv(S_c)))
+        return cv2.warpPerspective(leak_img, M_orig_c, (w_o, h_o), borderMode=cv2.BORDER_REPLICATE)
     except: pass
     return None
 
@@ -170,15 +207,20 @@ def scan_orientation(img: np.ndarray, master_ycrcb: Optional[np.ndarray] = None,
         except: continue
         
         votes = [[] for _ in range(PAYLOAD_LEN)]
-        for band in bands:
+        for i, band in enumerate(bands):
             jnd = calculate_jnd_mask(jnd_c, band.shape)
             d_map = (BASE_DELTA * 0.7 if ch_idx == 0 else BASE_DELTA) * jnd
             v1, v0 = np.round(band / d_map) * d_map + d_map/4, np.round(band / d_map) * d_map - d_map/4
             bits = (np.abs(band - v1) < np.abs(band - v0)).astype(np.int8).flatten()
+            
+            # SNR WEIGHTING: LL band (i=0) is prioritized for blur survival
+            weight = 3 if i == 0 else 1
+            
             max_idx = (len(bits) // PAYLOAD_LEN) * PAYLOAD_LEN
             if max_idx > 0:
                 reshaped = bits[:max_idx].reshape(-1, PAYLOAD_LEN)
-                for i in range(PAYLOAD_LEN): votes[i].extend(reshaped[:, i].tolist())
+                for _ in range(weight):
+                    for j in range(PAYLOAD_LEN): votes[j].extend(reshaped[:, j].tolist())
         
         if any(votes):
             dec = rs_decode([1 if sum(v) > len(v)/2 else 0 for v in votes])
