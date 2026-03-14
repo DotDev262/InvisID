@@ -19,6 +19,7 @@ dependencies = [
     "torch",
     "torchvision",
     "fpdf2>=2.8.7",
+    "reedsolo>=1.7.0",
 ]
 
 [dependency-groups]

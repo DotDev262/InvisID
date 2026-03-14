@@ -25,6 +25,8 @@ InvisID implements a multi-layered security posture to ensure both forensic inte
 
 ## 🛠️ Validation & Forensic Audit
 
+### Local Development
+
 ```bash
 # Install dependencies
 uv sync
@@ -37,6 +39,19 @@ uv run app/main.py
 
 # Run Technical Forensic Audit (Preliminary Benchmark)
 PYTHONPATH=. uv run scripts/forensic_ultimate_test.py
+```
+
+### Docker
+
+```bash
+# Build the image
+docker build -t invisid .
+
+# Run the container
+docker run -d -p 8000:8000 --env-file .env --env HOST=0.0.0.0 invisid
+
+# Health check
+curl http://localhost:8000/health
 ```
 
 ---
