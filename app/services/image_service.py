@@ -12,11 +12,11 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# --- Configuration Constants (FIX PLAN OPTIMIZED) ---
+# --- Configuration Constants (PHASE 1 ROBUST PREMIUM) ---
 BIT_COUNT = 16
 RS_ECC_BYTES = 24
 rs = RSCodec(RS_ECC_BYTES)
-BASE_DELTA = 30.0 # Fix Plan: Optimized for single-channel (Cr) high-fidelity embedding
+BASE_DELTA = 35.0 # Increased for Phase 1 Robustness
 PAYLOAD_LEN = 208
 
 DEFAULT_VALID_LABELS = ["ADMIN", "EMP-001", "EMP-002", "EMP-003", "CON-004", "INT-005", "GST-006", "EMP-007", "EMP-008", "EMP-999"]
@@ -30,7 +30,7 @@ def calculate_jnd_mask(channel: np.ndarray, target_shape: tuple) -> np.ndarray:
     mag = cv2.magnitude(gx, gy)
     norm_mag = mag / (np.max(mag) + 1e-5)
     mask = cv2.resize(np.power(norm_mag, 0.8), (target_shape[1], target_shape[0]), interpolation=cv2.INTER_AREA)
-    return 0.4 + mask * 1.5
+    return 0.5 + mask * 2.0 # Slightly higher floor for robustness
 
 def qim_mod(c: np.ndarray, m: np.ndarray, delta: np.ndarray) -> np.ndarray:
     return np.round(c / delta) * delta + np.where(m == 1, delta / 4, -delta / 4)
@@ -134,49 +134,43 @@ def embed_watermark(input_data: any, watermark_data: str, output_path: Optional[
     else: img = cv2.imread(input_data)
     if img is None: return None
 
-    payload = np.array(rs_encode([int(b) for b in "".join(format(ord(c), "08b") for c in encrypt_employee_id(watermark_data)[:2])]))
+    # Generate payloads
+    enc_id = encrypt_employee_id(watermark_data)
+    payload_bits = [int(b) for b in "".join(format(ord(c), "08b") for c in enc_id[:2])]
+    payload = np.array(rs_encode(payload_bits))
+    
     ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
     h, w = img.shape[:2]
     
-    # db2 wavelet for smoothness
-    wavelet = 'db2'
-    
-    for ch_idx in [2]: # Only Chrominance-Red (Cr) for 'Premium' look
+    # 1. DWT-QIM Layer (Premium Quality)
+    wavelet = 'db4'
+    for ch_idx in [0, 1, 2]:
         chan = ycrcb[:, :, ch_idx].astype(np.float32)
         coeffs = pywt.wavedec2(chan, wavelet, level=4)
-        
-        # FIX PLAN: Apply reduced scales across levels 2, 3, 4
         for level in [2, 3, 4]:
+            if ch_idx == 0 and level < 4: continue
             if level == 4: target_bands = [coeffs[1][0], coeffs[1][1]]
             elif level == 3: target_bands = [coeffs[2][0], coeffs[2][1]]
             elif level == 2: target_bands = [coeffs[3][0], coeffs[3][1]]
-            
             for band_idx, band in enumerate(target_bands):
                 jnd = calculate_jnd_mask(chan, band.shape)
-                
-                # FIX PLAN PARAMETERS
-                if level == 4: scale = 1.5
-                elif level == 3: scale = 1.2
-                elif level == 2: scale = 0.5
-                
-                # Apply channel-specific intensity (Fix Plan: lower alpha effectively reduces this)
+                scale = 2.0 if level == 4 else (1.4 if level == 3 else 0.8)
                 d_map = BASE_DELTA * scale * jnd
                 payload_map = np.tile(payload, (band.size // PAYLOAD_LEN) + 1)[:band.size].reshape(band.shape)
-                
                 if level == 4: coeffs[1] = list(coeffs[1]); coeffs[1][band_idx] = qim_mod(band, payload_map, d_map); coeffs[1] = tuple(coeffs[1])
                 elif level == 3: coeffs[2] = list(coeffs[2]); coeffs[2][band_idx] = qim_mod(band, payload_map, d_map); coeffs[2] = tuple(coeffs[2])
                 elif level == 2: coeffs[3] = list(coeffs[3]); coeffs[3][band_idx] = qim_mod(band, payload_map, d_map); coeffs[3] = tuple(coeffs[3])
-
         chan_mod = pywt.waverec2(coeffs, wavelet)[:h, :w]
-        
-        # Signal Extraction for Blending
-        wm_signal = chan_mod - chan
-        # Feather noise to prevent grain
-        wm_signal = cv2.GaussianBlur(wm_signal, (3, 3), 0.5)
-        
-        # FIX PLAN: Use 0.8 alpha for Cr for better robustness
-        alpha = 0.8
+        wm_signal = cv2.GaussianBlur(chan_mod - chan, (3, 3), 0.5)
+        alpha = 0.35 if ch_idx == 0 else 0.85
         ycrcb[:, :, ch_idx] = np.clip(chan + wm_signal * alpha, 0, 255).astype(np.uint8)
+
+    # 2. Spatial Spread Spectrum Layer (Attack Resilience)
+    # We use a pseudo-random noise (PRN) seeded with the payload bits
+    np.random.seed(int("".join(map(str, payload[:32])), 2) % (2**32))
+    prn = np.random.normal(0, 1, (h, w)).astype(np.float32)
+    spatial_signal = (prn * 3.5).astype(np.float32) # Stronger backstop for extreme attacks
+    ycrcb[:, :, 0] = np.clip(ycrcb[:, :, 0].astype(np.float32) + spatial_signal, 0, 255).astype(np.uint8)
 
     final = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
     if output_path:
@@ -187,25 +181,21 @@ def embed_watermark(input_data: any, watermark_data: str, output_path: Optional[
 
 def scan_orientation(img: np.ndarray, master_ycrcb: Optional[np.ndarray] = None, valid_labels: Optional[list[str]] = None) -> Optional[str]:
     ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb); labels = valid_labels or DEFAULT_VALID_LABELS
-    wavelet = 'db2'
-    for ch_idx in [2]: # Match premium embedding channel (Cr)
+    wavelet = 'db4'
+    results = []
+    
+    # --- Layer 1: DWT-QIM Voting ---
+    for ch_idx in [0, 1, 2]:
         chan = ycrcb[:, :, ch_idx].astype(np.float32); jnd_c = master_ycrcb[:,:,ch_idx] if master_ycrcb is not None else chan
         try:
             coeffs = pywt.wavedec2(chan, wavelet, level=4)
-            # Bands: Level 4, Level 3, Level 2
-            bands = [
-                (coeffs[1][0], 4), (coeffs[1][1], 4),
-                (coeffs[2][0], 3), (coeffs[2][1], 3),
-                (coeffs[3][0], 2), (coeffs[3][1], 2)
-            ]
+            bands = [(coeffs[1][0], 4), (coeffs[1][1], 4), (coeffs[2][0], 3), (coeffs[2][1], 3), (coeffs[3][0], 2), (coeffs[3][1], 2)]
         except: continue
         votes = [[] for _ in range(PAYLOAD_LEN)]
         for band, level in bands:
+            if ch_idx == 0 and level < 4: continue
             jnd = calculate_jnd_mask(jnd_c, band.shape)
-            if level == 4: scale = 1.5
-            elif level == 3: scale = 1.2
-            elif level == 2: scale = 0.5
-            
+            scale = 2.0 if level == 4 else (1.4 if level == 3 else 0.8)
             d_map = BASE_DELTA * scale * jnd
             v1, v0 = np.round(band / d_map) * d_map + d_map/4, np.round(band / d_map) * d_map - d_map/4
             bits = (np.abs(band - v1) < np.abs(band - v0)).astype(np.int8).flatten()
@@ -220,7 +210,37 @@ def scan_orientation(img: np.ndarray, master_ycrcb: Optional[np.ndarray] = None,
             if dec:
                 m = "".join(chr(int("".join(map(str, dec[i:i+8])), 2)) for i in range(0, BIT_COUNT, 8))
                 for label in labels:
-                    if encrypt_employee_id(label)[:2] == m: return label
+                    if encrypt_employee_id(label)[:2] == m: results.append(label)
+
+    if results:
+        from collections import Counter
+        return Counter(results).most_common(1)[0][0]
+
+    # --- Layer 2: Spatial Spread Spectrum Correlation (Backstop) ---
+    y_chan = ycrcb[:, :, 0].astype(np.float32)
+    # Test multiple scales for alignment resilience
+    best_overall_corr = -1.0
+    best_overall_label = None
+    
+    for s_factor in [1.0, 0.5, 0.75]:
+        h_s, w_s = int(ycrcb.shape[0] * s_factor), int(ycrcb.shape[1] * s_factor)
+        y_s = cv2.resize(y_chan, (w_s, h_s))
+        y_noise = cv2.Laplacian(y_s, cv2.CV_32F)
+        
+        for label in labels:
+            enc_id = encrypt_employee_id(label)
+            p_bits = [int(b) for b in "".join(format(ord(c), "08b") for c in enc_id[:2])]
+            p_enc = rs_encode(p_bits)
+            np.random.seed(int("".join(map(str, p_enc[:32])), 2) % (2**32))
+            prn = np.random.normal(0, 1, (h_s, w_s)).astype(np.float32)
+            corr = np.sum(y_noise * prn) / (np.linalg.norm(y_noise) * np.linalg.norm(prn) + 1e-9)
+            if corr > best_overall_corr:
+                best_overall_corr = corr
+                best_overall_label = label
+            
+    if best_overall_corr > 0.001:
+        return best_overall_label
+
     return None
 
 def extract_watermark(input_data: any, master_data: any = None, ignore_exif: bool = False, valid_labels: Optional[list[str]] = None) -> Tuple[Optional[str], float, Optional[np.ndarray]]:
