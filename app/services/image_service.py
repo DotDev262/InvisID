@@ -12,12 +12,12 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# --- Configuration Constants (PHASE 1 ROBUST PREMIUM) ---
+# --- Configuration Constants (FIXED ROBUST PREMIUM) ---
 BIT_COUNT = 16
-RS_ECC_BYTES = 24
+RS_ECC_BYTES = 32 # Increased for better error correction
 rs = RSCodec(RS_ECC_BYTES)
-BASE_DELTA = 35.0 # Increased for Phase 1 Robustness
-PAYLOAD_LEN = 208
+BASE_DELTA = 40.0 # Stronger signal for attack resilience
+PAYLOAD_LEN = BIT_COUNT + RS_ECC_BYTES * 8
 
 DEFAULT_VALID_LABELS = ["ADMIN", "EMP-001", "EMP-002", "EMP-003", "CON-004", "INT-005", "GST-006", "EMP-007", "EMP-008", "EMP-999"]
 BURNIN_ALPHA = 0.0 # Temporarily disabled visible watermark
@@ -165,11 +165,13 @@ def embed_watermark(input_data: any, watermark_data: str, output_path: Optional[
         alpha = 0.35 if ch_idx == 0 else 0.85
         ycrcb[:, :, ch_idx] = np.clip(chan + wm_signal * alpha, 0, 255).astype(np.uint8)
 
-    # 2. Spatial Spread Spectrum Layer (Attack Resilience)
-    # We use a pseudo-random noise (PRN) seeded with the payload bits
-    np.random.seed(int("".join(map(str, payload[:32])), 2) % (2**32))
+    # 2. Spatial Spread Spectrum Layer (Fast & Robust Resilience)
+    # We use a pseudo-random noise (PRN) seeded with the full encrypted ID
+    import hashlib
+    seed = int(hashlib.sha256(enc_id.encode()).hexdigest(), 16) % (2**32)
+    np.random.seed(seed)
     prn = np.random.normal(0, 1, (h, w)).astype(np.float32)
-    spatial_signal = (prn * 3.5).astype(np.float32) # Stronger backstop for extreme attacks
+    spatial_signal = (prn * 4.0).astype(np.float32) # Robust global signal
     ycrcb[:, :, 0] = np.clip(ycrcb[:, :, 0].astype(np.float32) + spatial_signal, 0, 255).astype(np.uint8)
 
     final = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
@@ -214,31 +216,35 @@ def scan_orientation(img: np.ndarray, master_ycrcb: Optional[np.ndarray] = None,
 
     if results:
         from collections import Counter
-        return Counter(results).most_common(1)[0][0]
+        counts = Counter(results).most_common(1)
+        if counts[0][1] >= 2: # Consensus: At least 2 channels must agree
+            return counts[0][0]
+        # If results exist but no consensus, we continue to spatial layer as fallback
 
-    # --- Layer 2: Spatial Spread Spectrum Correlation (Backstop) ---
+    # --- Layer 2: Fast Spatial Backstop (Robustness) ---
     y_chan = ycrcb[:, :, 0].astype(np.float32)
-    # Test multiple scales for alignment resilience
     best_overall_corr = -1.0
     best_overall_label = None
     
-    for s_factor in [1.0, 0.5, 0.75]:
+    for s_factor in [1.0, 0.75, 0.5, 0.35]: # Restore scales for survival
         h_s, w_s = int(ycrcb.shape[0] * s_factor), int(ycrcb.shape[1] * s_factor)
+        if h_s < 100 or w_s < 100: continue
+        
         y_s = cv2.resize(y_chan, (w_s, h_s))
         y_noise = cv2.Laplacian(y_s, cv2.CV_32F)
         
         for label in labels:
             enc_id = encrypt_employee_id(label)
-            p_bits = [int(b) for b in "".join(format(ord(c), "08b") for c in enc_id[:2])]
-            p_enc = rs_encode(p_bits)
-            np.random.seed(int("".join(map(str, p_enc[:32])), 2) % (2**32))
+            import hashlib
+            seed = int(hashlib.sha256(enc_id.encode()).hexdigest(), 16) % (2**32)
+            np.random.seed(seed)
             prn = np.random.normal(0, 1, (h_s, w_s)).astype(np.float32)
             corr = np.sum(y_noise * prn) / (np.linalg.norm(y_noise) * np.linalg.norm(prn) + 1e-9)
             if corr > best_overall_corr:
                 best_overall_corr = corr
                 best_overall_label = label
             
-    if best_overall_corr > 0.001:
+    if best_overall_corr > 0.015: # Stricter threshold for spatial backstop
         return best_overall_label
 
     return None
@@ -273,8 +279,14 @@ def extract_watermark(input_data: any, master_data: any = None, ignore_exif: boo
                 rot = rotate_image(img_l, a) if a != 0 else img_l
                 res = scan_orientation(rot, m_ycrcb, valid_labels)
                 if res: return res, 0.97, rot
-    for a in [0, 45, 90, 135, 180, 225, 270, 315]:
-        rot = rotate_image(img, a) if a != 0 else img
-        res = scan_orientation(rot, m_ycrcb, valid_labels)
-        if res: return res, 1.0, rot
+    
+    # Fix 1: Multi-Scale Recovery Loop (Try extraction at various scales if alignment/DWT failed)
+    h_orig, w_orig = img.shape[:2]
+    for scale in [1.0, 0.75, 0.5, 0.35]:
+        img_scaled = cv2.resize(img, (int(w_orig * scale), int(h_orig * scale))) if scale != 1.0 else img
+        for a in [0, 45, 90, 135, 180, 225, 270, 315]:
+            rot = rotate_image(img_scaled, a) if a != 0 else img_scaled
+            res = scan_orientation(rot, m_ycrcb, valid_labels)
+            if res: return res, 1.0 * scale, rot
+            
     return None, 0.0, img.copy()
