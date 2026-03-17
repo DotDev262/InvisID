@@ -44,7 +44,8 @@
         .tab-inactive { color: #94a3b8; }
         .tab-inactive:hover { color: #cbd5e1; }
 
-        /* PRINT SHIELD: Hides all sensitive content when printing */
+        /* PRINT SHIELD: Hides all sensitive content when printing (Temp Disabled) */
+        /*
         @media print {
             body { display: none !important; }
             #print-restriction-overlay {
@@ -60,6 +61,7 @@
                 z-index: 9999;
             }
         }
+        */
     </style>
     <style>body { min-height: max(884px, 100dvh); }</style>
     <style>
@@ -448,12 +450,14 @@
                         if (canvas.dataset.visible === "true") {
                             ctx.drawImage(img, 0, 0);
                             
-                            // Efficient pattern fill
+                            // Pattern fill disabled temporarily
+                            /*
                             ctx.fillStyle = pattern;
                             ctx.save();
                             ctx.translate(offset, offset/2);
                             ctx.fillRect(-offset, -offset/2, canvas.width, canvas.height);
                             ctx.restore();
+                            */
                             
                             offset = (offset + 0.4) % 250;
                         }
@@ -636,33 +640,33 @@
             } catch (e) { console.error("Strike report failed", e); }
         }
 
-        // 1. Disable Right Click
+        // 1. Disable Right Click (Temp Disabled)
         document.addEventListener('contextmenu', (e) => {
             if (e.target.tagName === 'IMG' || e.target.closest('#gallery-grid')) {
-                e.preventDefault();
-                reportSecurityStrike('RIGHT_CLICK', e.target.alt || 'Asset Preview');
-                return false;
+                // e.preventDefault();
+                // reportSecurityStrike('RIGHT_CLICK', e.target.alt || 'Asset Preview');
+                return true;
             }
         });
 
         // 2. Advanced Key Detection (Screenshots & DevTools)
         document.addEventListener('keydown', (e) => {
-            // Screenshot heuristics
+            // Screenshot heuristics (Temp Disabled)
             if (e.key === 'PrintScreen' || (e.metaKey && e.shiftKey && (e.key === '3' || e.key === '4'))) {
-                reportSecurityStrike('SCREENSHOT_KEY');
-                e.preventDefault();
+                // reportSecurityStrike('SCREENSHOT_KEY');
+                // e.preventDefault();
             }
             // DevTools heuristics (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U)
             if (e.key === 'F12' || 
                (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j' || e.key === 'C' || e.key === 'c')) ||
                (e.ctrlKey && (e.key === 'U' || e.key === 'u'))) {
-                reportSecurityStrike('DEVTOOLS_ACCESS');
-                e.preventDefault();
-                return false;
+                // reportSecurityStrike('DEVTOOLS_ACCESS');
+                // e.preventDefault();
+                return true;
             }
         });
 
-        // 3. DevTools Dimension Heuristic (Optimized for Tiling WMs)
+        // 3. DevTools Dimension Heuristic (Temp Disabled)
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
@@ -675,20 +679,20 @@
                 if (widthDiff > threshold || heightDiff > threshold) {
                     const shield = document.getElementById('screen-shield');
                     if (shield.classList.contains('hidden')) {
-                        reportSecurityStrike('DEVTOOLS_RESIZE_HEURISTIC', 'Window State');
-                        shield.classList.remove('hidden');
-                        shield.classList.add('flex');
+                        // reportSecurityStrike('DEVTOOLS_RESIZE_HEURISTIC', 'Window State');
+                        // shield.classList.remove('hidden');
+                        // shield.classList.add('flex');
                     }
                 }
             }, 500); // 500ms debounce to ignore snapping transitions
         });
 
-        // 4. Page Visibility / Screen Capture Shield
+        // 4. Page Visibility / Screen Capture Shield (Temp Disabled)
         document.addEventListener('visibilitychange', () => {
             const shield = document.getElementById('screen-shield');
             if (document.hidden) {
-                shield.classList.remove('hidden');
-                shield.classList.add('flex');
+                // shield.classList.remove('hidden');
+                // shield.classList.add('flex');
             } else {
                 shield.classList.add('hidden');
                 shield.classList.remove('flex');
@@ -702,8 +706,8 @@
             window.addEventListener('blur', () => {
                 if (isDownloading) return; // Skip shield if we are currently downloading
                 const shield = document.getElementById('screen-shield');
-                shield.classList.remove('hidden');
-                shield.classList.add('flex');
+                // shield.classList.remove('hidden');
+                // shield.classList.add('flex');
             });
             window.addEventListener('focus', () => {
                 const shield = document.getElementById('screen-shield');

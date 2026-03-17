@@ -131,14 +131,21 @@ async def perform_stress_test(
                 current_img = cv2.warpPerspective(current_img, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
                 
             elif a_type == "whatsapp":
-                # Comp + Scale combo
+                # Comp + Scale combo (Synchronized with repro_failure.py)
+                # 1. Downscale to 50%
+                h, w = current_img.shape[:2]
+                new_size = (int(w * 0.5), int(h * 0.5))
+                current_img = cv2.resize(current_img, new_size, interpolation=cv2.INTER_AREA)
+                
+                # 2. JPEG Compression (Q50)
                 buf = BytesIO()
                 pil_tmp = Image.fromarray(cv2.cvtColor(current_img, cv2.COLOR_BGR2RGB))
-                pil_tmp.save(buf, format="JPEG", quality=70)
+                pil_tmp.save(buf, format="JPEG", quality=50)
                 current_img = cv2.cvtColor(np.array(Image.open(BytesIO(buf.getvalue()))), cv2.COLOR_RGB2BGR)
-                h, w = current_img.shape[:2]
-                resized = cv2.resize(current_img, (int(w*0.6), int(h*0.6)), interpolation=cv2.INTER_LANCZOS4)
-                current_img = cv2.resize(resized, (w, h), interpolation=cv2.INTER_LANCZOS4)
+                
+                # 3. No upscale needed here as extraction handles it via master alignment
+                # but for UI display we might keep it small or upscale. 
+                # The extract_watermark call will use the current_img directly.
 
     except Exception as e:
         logger.error(f"Attack execution failed: {e}")

@@ -30,23 +30,44 @@ def process_investigation_task(job_id: str, file_path: str, original_filename: s
         
         conn = get_db()
         cursor = conn.cursor()
-        # Look for a master asset that matches this leak's filename (best guess)
-        cursor.execute("SELECT id FROM master_images WHERE filename = ?", (original_filename,))
+        # 1. Try exact filename match
+        cursor.execute("SELECT id, filename FROM master_images WHERE filename = ? AND deleted_at IS NULL", (original_filename,))
         asset = cursor.fetchone()
         
-        master_bytes = None
+        potential_assets = []
         if asset:
-            asset_id = asset['id']
-            master_path = os.path.join(settings.UPLOAD_DIR, f"{asset_id}.png")
-            if os.path.exists(master_path):
-                with open(master_path, "rb") as f:
-                    master_bytes = decrypt_data(f.read())
+            potential_assets.append(asset)
+        
+        # 2. If no exact match or we want to be thorough, get all non-trashed assets
+        if not asset:
+            cursor.execute("SELECT id, filename FROM master_images WHERE deleted_at IS NULL")
+            potential_assets = cursor.fetchall()
+        
         conn.close()
 
-        # 2. Extract watermark with alignment
-        # Unpack 3 values (ID, Confidence, AlignedImg)
-        employee_id, confidence, aligned_img = extract_watermark(file_path, master_data=master_bytes)
+        employee_id = None
+        confidence = 0.0
+        aligned_img = None
         
+        for p_asset in potential_assets:
+            asset_id = p_asset['id']
+            master_path = os.path.join(settings.UPLOAD_DIR, f"{asset_id}.png")
+            if not os.path.exists(master_path):
+                continue
+                
+            with open(master_path, "rb") as f:
+                master_bytes = decrypt_data(f.read())
+            
+            # 2. Extract watermark with alignment using this potential master
+            cur_id, cur_conf, cur_aligned = extract_watermark(file_path, master_data=master_bytes)
+            
+            if cur_id and cur_id != "UNKNOWN" and cur_conf > confidence:
+                employee_id = cur_id
+                confidence = cur_conf
+                aligned_img = cur_aligned
+                if confidence > 0.9: # Early exit if very high confidence
+                    break
+
         if employee_id and employee_id != "UNKNOWN":
             # RECONSTRUCTION: Save the perfectly aligned image as the formal evidence
             if aligned_img is not None:
