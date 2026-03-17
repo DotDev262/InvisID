@@ -12,11 +12,11 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# --- Configuration Constants (STABLE) ---
+# --- Configuration Constants (FIX PLAN OPTIMIZED) ---
 BIT_COUNT = 16
 RS_ECC_BYTES = 24
 rs = RSCodec(RS_ECC_BYTES)
-BASE_DELTA = 45.0 # Lowered for extreme visual purity
+BASE_DELTA = 30.0 # Fix Plan: Optimized for single-channel (Cr) high-fidelity embedding
 PAYLOAD_LEN = 208
 
 DEFAULT_VALID_LABELS = ["ADMIN", "EMP-001", "EMP-002", "EMP-003", "CON-004", "INT-005", "GST-006", "EMP-007", "EMP-008", "EMP-999"]
@@ -25,14 +25,12 @@ BURNIN_ALPHA = 0.0 # Temporarily disabled visible watermark
 # --- MATHEMATICAL ENGINE ---
 
 def calculate_jnd_mask(channel: np.ndarray, target_shape: tuple) -> np.ndarray:
-    """Refined JND: Suppresses watermark in flat areas using power-law scaling."""
     gx = cv2.Sobel(channel, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(channel, cv2.CV_32F, 0, 1, ksize=3)
     mag = cv2.magnitude(gx, gy)
-    # Normalize and use power to sharply drop delta in flat regions
     norm_mag = mag / (np.max(mag) + 1e-5)
-    mask = cv2.resize(np.power(norm_mag, 0.7), (target_shape[1], target_shape[0]), interpolation=cv2.INTER_AREA)
-    return 0.4 + mask * 5.0
+    mask = cv2.resize(np.power(norm_mag, 0.8), (target_shape[1], target_shape[0]), interpolation=cv2.INTER_AREA)
+    return 0.4 + mask * 1.5
 
 def qim_mod(c: np.ndarray, m: np.ndarray, delta: np.ndarray) -> np.ndarray:
     return np.round(c / delta) * delta + np.where(m == 1, delta / 4, -delta / 4)
@@ -140,41 +138,45 @@ def embed_watermark(input_data: any, watermark_data: str, output_path: Optional[
     ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
     h, w = img.shape[:2]
     
-    # Use 'db2' for smoother transitions than 'haar'
+    # db2 wavelet for smoothness
     wavelet = 'db2'
     
-    for ch_idx in [0, 2]:
+    for ch_idx in [2]: # Only Chrominance-Red (Cr) for 'Premium' look
         chan = ycrcb[:, :, ch_idx].astype(np.float32)
         coeffs = pywt.wavedec2(chan, wavelet, level=4)
         
-        # Redundant embedding in levels 3 and 4 (Details only)
-        # Slicing is carefully handled for non-Haar wavelets
-        for level in [3, 4]:
+        # FIX PLAN: Apply reduced scales across levels 2, 3, 4
+        for level in [2, 3, 4]:
             if level == 4: target_bands = [coeffs[1][0], coeffs[1][1]]
             elif level == 3: target_bands = [coeffs[2][0], coeffs[2][1]]
+            elif level == 2: target_bands = [coeffs[3][0], coeffs[3][1]]
             
             for band_idx, band in enumerate(target_bands):
                 jnd = calculate_jnd_mask(chan, band.shape)
-                # Significantly lower Y channel intensity
-                scale = 1.8 if ch_idx == 2 else 0.6
-                if level == 4: scale *= 2.0
-                elif level == 3: scale *= 1.5
                 
+                # FIX PLAN PARAMETERS
+                if level == 4: scale = 1.5
+                elif level == 3: scale = 1.2
+                elif level == 2: scale = 0.5
+                
+                # Apply channel-specific intensity (Fix Plan: lower alpha effectively reduces this)
                 d_map = BASE_DELTA * scale * jnd
                 payload_map = np.tile(payload, (band.size // PAYLOAD_LEN) + 1)[:band.size].reshape(band.shape)
                 
                 if level == 4: coeffs[1] = list(coeffs[1]); coeffs[1][band_idx] = qim_mod(band, payload_map, d_map); coeffs[1] = tuple(coeffs[1])
                 elif level == 3: coeffs[2] = list(coeffs[2]); coeffs[2][band_idx] = qim_mod(band, payload_map, d_map); coeffs[2] = tuple(coeffs[2])
+                elif level == 2: coeffs[3] = list(coeffs[3]); coeffs[3][band_idx] = qim_mod(band, payload_map, d_map); coeffs[3] = tuple(coeffs[3])
 
         chan_mod = pywt.waverec2(coeffs, wavelet)[:h, :w]
         
-        # NOISE FEATHERING: Gaussian blur on the watermark signal to eliminate grit
+        # Signal Extraction for Blending
         wm_signal = chan_mod - chan
-        wm_signal_smoothed = cv2.GaussianBlur(wm_signal, (3, 3), 0.5)
+        # Feather noise to prevent grain
+        wm_signal = cv2.GaussianBlur(wm_signal, (3, 3), 0.5)
         
-        # Gentle blending
-        alpha = 0.85 if ch_idx == 2 else 0.65
-        ycrcb[:, :, ch_idx] = np.clip(chan + wm_signal_smoothed * alpha, 0, 255).astype(np.uint8)
+        # FIX PLAN: Use 0.8 alpha for Cr for better robustness
+        alpha = 0.8
+        ycrcb[:, :, ch_idx] = np.clip(chan + wm_signal * alpha, 0, 255).astype(np.uint8)
 
     final = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
     if output_path:
@@ -186,18 +188,24 @@ def embed_watermark(input_data: any, watermark_data: str, output_path: Optional[
 def scan_orientation(img: np.ndarray, master_ycrcb: Optional[np.ndarray] = None, valid_labels: Optional[list[str]] = None) -> Optional[str]:
     ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb); labels = valid_labels or DEFAULT_VALID_LABELS
     wavelet = 'db2'
-    for ch_idx in [0, 2]:
+    for ch_idx in [2]: # Match premium embedding channel (Cr)
         chan = ycrcb[:, :, ch_idx].astype(np.float32); jnd_c = master_ycrcb[:,:,ch_idx] if master_ycrcb is not None else chan
         try:
             coeffs = pywt.wavedec2(chan, wavelet, level=4)
-            bands = [(coeffs[1][0], 4), (coeffs[1][1], 4), (coeffs[2][0], 3), (coeffs[2][1], 3)]
+            # Bands: Level 4, Level 3, Level 2
+            bands = [
+                (coeffs[1][0], 4), (coeffs[1][1], 4),
+                (coeffs[2][0], 3), (coeffs[2][1], 3),
+                (coeffs[3][0], 2), (coeffs[3][1], 2)
+            ]
         except: continue
         votes = [[] for _ in range(PAYLOAD_LEN)]
         for band, level in bands:
             jnd = calculate_jnd_mask(jnd_c, band.shape)
-            scale = 1.8 if ch_idx == 2 else 0.6
-            if level == 4: scale *= 2.0
-            elif level == 3: scale *= 1.5
+            if level == 4: scale = 1.5
+            elif level == 3: scale = 1.2
+            elif level == 2: scale = 0.5
+            
             d_map = BASE_DELTA * scale * jnd
             v1, v0 = np.round(band / d_map) * d_map + d_map/4, np.round(band / d_map) * d_map - d_map/4
             bits = (np.abs(band - v1) < np.abs(band - v0)).astype(np.int8).flatten()

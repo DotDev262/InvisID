@@ -29,8 +29,13 @@ def brightness_attack(img, factor):
 
 def scale_attack(img, scale):
     h, w = img.shape[:2]
-    resized = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LANCZOS4)
-    return cv2.resize(resized, (w, h), interpolation=cv2.INTER_LANCZOS4)
+    # Use INTER_AREA for downscaling like repro_failure.py
+    return cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
+def whatsapp_attack(img):
+    # Synchronized with repro_failure.py (50% + Q50)
+    scaled = scale_attack(img, 0.5)
+    return jpeg_attack(scaled, 50)
 
 def rotate_attack(img, angle):
     h, w = img.shape[:2]
@@ -67,18 +72,18 @@ def audit_single_asset(args):
         attacks = [
             ("EXIF Recovery", "exif"),
             ("Baseline", lambda x: x),
-            ("JPEG (Q60)", lambda x: jpeg_attack(x, 60)),
+            ("JPEG (Q50)", lambda x: jpeg_attack(x, 50)),
             ("Gaussian Blur (R2)", lambda x: blur_attack(x, 2)),
             ("Noise (S&P)", lambda x: noise_attack(x, 15)),
             ("Rotation (15°)", lambda x: rotate_attack(x, 15)),
-            ("Scaling (75%)", lambda x: scale_attack(x, 0.75)),
-            ("WhatsApp", lambda x: scale_attack(jpeg_attack(x, 70), 0.6)),
+            ("Scaling (50%)", lambda x: scale_attack(x, 0.5)),
+            ("WhatsApp (50% + Q50)", lambda x: whatsapp_attack(x)),
             ("Median Filter", lambda x: cv2.medianBlur(x, 3)),
             ("Grayscale", lambda x: cv2.cvtColor(cv2.cvtColor(x, cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR)),
             ("Perspective", lambda x: perspective_attack(x)),
             ("Sharpen", lambda x: cv2.cvtColor(np.array(Image.fromarray(cv2.cvtColor(x, cv2.COLOR_BGR2RGB)).filter(ImageFilter.SHARPEN)), cv2.COLOR_RGB2BGR)),
             ("Brightness", lambda x: brightness_attack(x, 0.3)),
-            ("ULTIMATE COMBO", lambda x: perspective_attack(noise_attack(blur_attack(jpeg_attack(x, 80), 1), 10)))
+            ("ULTIMATE COMBO", lambda x: perspective_attack(noise_attack(blur_attack(whatsapp_attack(x), 1), 10)))
         ]
         
         passed = 0

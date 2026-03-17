@@ -28,13 +28,14 @@ def test_robustness():
         ("Downscale (50%)", lambda x: scale_attack(x, 0.5)),
         ("Rotation (15°)", lambda x: rotate_attack(x, 15)),
         ("Gaussian Blur (R1)", lambda x: cv2.GaussianBlur(x, (3, 3), 1)),
+        ("WhatsApp Simulation (50% + Q50)", lambda x: jpeg_attack(scale_attack(x, 0.5), 50)),
     ]
     
     for name, attack_func in attacks:
         print(f"\n[Test] {name}")
         attacked = attack_func(watermarked)
         # Use master alignment
-        extracted_id, conf = extract_watermark(attacked, master_data=img, ignore_exif=True)
+        extracted_id, conf, _ = extract_watermark(attacked, master_data=img, ignore_exif=True)
         status = "✅ PASS" if extracted_id == target_id else "❌ FAIL"
         print(f"  Result: '{extracted_id}' | Confidence: {conf*100}% | Status: {status}")
 
