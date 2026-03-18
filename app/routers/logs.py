@@ -1,5 +1,6 @@
 import csv
 import hashlib
+import hmac
 import io
 from datetime import datetime, timezone
 from typing import Optional
@@ -10,8 +11,12 @@ from fastapi.responses import StreamingResponse
 from app.dependencies.auth import AdminUser
 from app.models.schemas import AuditLogList
 from app.utils.db import get_db
+from app.config import get_settings
 
 router = APIRouter(prefix="/logs", tags=["logs"])
+
+settings = get_settings()
+HMAC_KEY = settings.MASTER_SECRET.encode()
 
 @router.get("/export")
 async def export_logs_csv(user: AdminUser):
@@ -74,10 +79,10 @@ def record_log(user_id: str, event_type: str, resource: str, status: str = "succ
     row = cursor.fetchone()
     prev_hash = row['current_hash'] if row else "GENESIS_BLOCK"
     
-    # 2. Calculate current hash (Chain logic)
-    # Hash = SHA256(prev_hash + timestamp + user_id + event_type + status)
+    # 2. Calculate current hash (HMAC-SHA256 chain)
+    # Hash = HMAC-SHA256(key, prev_hash + timestamp + user_id + event_type + status)
     log_content = f"{prev_hash}{timestamp}{user_id}{event_type}{status}{resource}"
-    curr_hash = hashlib.sha256(log_content.encode()).hexdigest()
+    curr_hash = hmac.new(HMAC_KEY, log_content.encode(), hashlib.sha256).hexdigest()
     
     cursor.execute("""
         INSERT INTO audit_logs (timestamp, user_id, event_type, resource, status, details, previous_hash, current_hash)

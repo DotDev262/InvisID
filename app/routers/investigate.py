@@ -105,9 +105,12 @@ async def investigate_image(
     # 1. Create a unique job
     job_id = jobs.create_job("investigation")
     
-    # 2. Save file temporarily
-    os.makedirs(settings.RESULT_DIR, exist_ok=True)
-    temp_filename = f"leak_{job_id}_{file.filename}"
+    # 2. Save file temporarily - SANITIZE filename to prevent path traversal
+    safe_filename = os.path.basename(file.filename)  # Remove path components, ../
+    # Validate filename contains only safe characters
+    if not safe_filename.replace('.', '').replace('_', '').replace('-', '').isalnum():
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    temp_filename = f"leak_{job_id}_{safe_filename}"
     temp_path = os.path.join(settings.RESULT_DIR, temp_filename)
 
     try:

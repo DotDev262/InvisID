@@ -100,6 +100,7 @@ async def download_image(
         raise HTTPException(status_code=404, detail="Image not found or in trash")
 
     image_file = row['filename']
+    image_file = os.path.basename(image_file)  # Defensive: prevent path traversal
     upload_dir = settings.UPLOAD_DIR
     
     # Master is internally PNG

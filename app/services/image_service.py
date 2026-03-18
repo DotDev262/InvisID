@@ -12,14 +12,18 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# --- Configuration Constants (FIXED ROBUST PREMIUM) ---
+# --- Configuration Constants (OPTIMIZED ROBUST PREMIUM) ---
 BIT_COUNT = 16
-RS_ECC_BYTES = 32 # Increased for better error correction
+RS_ECC_BYTES = 32
 rs = RSCodec(RS_ECC_BYTES)
-BASE_DELTA = 40.0 # Stronger signal for attack resilience
+BASE_DELTA = 42.0  # Balanced for quality/robustness
 PAYLOAD_LEN = BIT_COUNT + RS_ECC_BYTES * 8
 
 DEFAULT_VALID_LABELS = ["ADMIN", "EMP-001", "EMP-002", "EMP-003", "CON-004", "INT-005", "GST-006", "EMP-007", "EMP-008", "EMP-999"]
+
+# Pre-computed encrypted labels for speed
+_cached_encrypted_labels = {}
+_cached_payloads = {}
 BURNIN_ALPHA = 0.0 # Temporarily disabled visible watermark
 
 # --- MATHEMATICAL ENGINE ---
@@ -49,18 +53,39 @@ def rs_decode(bits: list) -> Optional[list]:
         return [int(x) for x in "".join(format(b, "08b") for b in decoded)]
     except: return None
 
-# --- CRYPTO ---
+# --- CRYPTO (AES-GCM for authenticity and pattern hiding) ---
+
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
+
+def _get_encrypted_label(label: str) -> str:
+    if label not in _cached_encrypted_labels:
+        key = settings.MASTER_SECRET.encode()[:32].ljust(32, b'\0')
+        iv = get_random_bytes(12)  # GCM recommended IV size
+        cipher = AES.new(key, AES.MODE_GCM, nonce=iv)
+        ciphertext, tag = cipher.encrypt_and_digest(pad(label.encode(), 16))
+        # Store: IV (12) + Tag (16) + Ciphertext
+        _cached_encrypted_labels[label] = base64.b64encode(iv + tag + ciphertext).decode()
+    return _cached_encrypted_labels[label]
+
+def _get_payload_bits(label: str) -> list:
+    if label not in _cached_payloads:
+        enc_id = _get_encrypted_label(label)
+        _cached_payloads[label] = [int(b) for b in "".join(format(ord(c), "08b") for c in enc_id[:2])]
+    return _cached_payloads[label]
 
 def encrypt_employee_id(emp_id: str) -> str:
-    key = settings.MASTER_SECRET.encode()[:32].ljust(32, b'\0')
-    cipher = AES.new(key, AES.MODE_ECB)
-    return base64.b64encode(cipher.encrypt(pad(emp_id.encode(), 16))).decode()
+    return _get_encrypted_label(emp_id)
 
 def decrypt_employee_id(cipher_text: str) -> Optional[str]:
     try:
         key = settings.MASTER_SECRET.encode()[:32].ljust(32, b'\0')
-        cipher = AES.new(key, AES.MODE_ECB)
-        return unpad(cipher.decrypt(base64.b64decode(cipher_text)), 16).decode()
+        data = base64.b64decode(cipher_text)
+        iv = data[:12]
+        tag = data[12:28]
+        ciphertext = data[28:]
+        cipher = AES.new(key, AES.MODE_GCM, nonce=iv)
+        return unpad(cipher.decrypt_and_verify(ciphertext, tag), 16).decode()
     except: return None
 
 # --- ALIGNMENT ---
@@ -93,7 +118,7 @@ def align_leak_to_master(leak_img: np.ndarray, master_img: np.ndarray) -> Option
         l_f = cv2.resize(cv2.cvtColor(leak_img, cv2.COLOR_BGR2GRAY), (int(w_o*s_f), int(h_o*s_f)))
         M_scaled = np.dot(np.diag([s_f/s_c, s_f/s_c, 1]), np.dot(M_c, np.diag([s_c/s_f, s_c/s_f, 1])))
         l_f_pre = cv2.warpPerspective(l_f, M_scaled, (m_f.shape[1], m_f.shape[0]))
-        sift_f = cv2.SIFT_create(25000)
+        sift_f = cv2.SIFT_create(5000)  # Reduced from 25000 for speed
         kp_m_f, des_m_f = sift_f.detectAndCompute(m_f, None)
         kp_l_f, des_l_f = sift_f.detectAndCompute(l_f_pre, None)
         if des_m_f is not None and des_l_f is not None:
@@ -134,9 +159,9 @@ def embed_watermark(input_data: any, watermark_data: str, output_path: Optional[
     else: img = cv2.imread(input_data)
     if img is None: return None
 
-    # Generate payloads
-    enc_id = encrypt_employee_id(watermark_data)
-    payload_bits = [int(b) for b in "".join(format(ord(c), "08b") for c in enc_id[:2])]
+    # Generate payloads (using cached functions)
+    enc_id = _get_encrypted_label(watermark_data)
+    payload_bits = _get_payload_bits(watermark_data)
     payload = np.array(rs_encode(payload_bits))
     
     ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
@@ -147,14 +172,14 @@ def embed_watermark(input_data: any, watermark_data: str, output_path: Optional[
     for ch_idx in [0, 1, 2]:
         chan = ycrcb[:, :, ch_idx].astype(np.float32)
         coeffs = pywt.wavedec2(chan, wavelet, level=4)
-        for level in [2, 3, 4]:
-            if ch_idx == 0 and level < 4: continue
+        for level in [3, 4]:
+            if ch_idx == 0 and level < 4: continue  # Y channel: only level 4
             if level == 4: target_bands = [coeffs[1][0], coeffs[1][1]]
             elif level == 3: target_bands = [coeffs[2][0], coeffs[2][1]]
             elif level == 2: target_bands = [coeffs[3][0], coeffs[3][1]]
             for band_idx, band in enumerate(target_bands):
                 jnd = calculate_jnd_mask(chan, band.shape)
-                scale = 2.0 if level == 4 else (1.4 if level == 3 else 0.8)
+                scale = 2.5 if level == 4 else (1.6 if level == 3 else 0.9)
                 d_map = BASE_DELTA * scale * jnd
                 payload_map = np.tile(payload, (band.size // PAYLOAD_LEN) + 1)[:band.size].reshape(band.shape)
                 if level == 4: coeffs[1] = list(coeffs[1]); coeffs[1][band_idx] = qim_mod(band, payload_map, d_map); coeffs[1] = tuple(coeffs[1])
@@ -162,16 +187,15 @@ def embed_watermark(input_data: any, watermark_data: str, output_path: Optional[
                 elif level == 2: coeffs[3] = list(coeffs[3]); coeffs[3][band_idx] = qim_mod(band, payload_map, d_map); coeffs[3] = tuple(coeffs[3])
         chan_mod = pywt.waverec2(coeffs, wavelet)[:h, :w]
         wm_signal = cv2.GaussianBlur(chan_mod - chan, (3, 3), 0.5)
-        alpha = 0.35 if ch_idx == 0 else 0.85
+        alpha = 0.30 if ch_idx == 0 else 0.7  # Balanced
         ycrcb[:, :, ch_idx] = np.clip(chan + wm_signal * alpha, 0, 255).astype(np.uint8)
 
-    # 2. Spatial Spread Spectrum Layer (Fast & Robust Resilience)
-    # We use a pseudo-random noise (PRN) seeded with the full encrypted ID
+    # 2. Spatial Spread Spectrum Layer - Very low for quality
     import hashlib
     seed = int(hashlib.sha256(enc_id.encode()).hexdigest(), 16) % (2**32)
     np.random.seed(seed)
     prn = np.random.normal(0, 1, (h, w)).astype(np.float32)
-    spatial_signal = (prn * 4.0).astype(np.float32) # Robust global signal
+    spatial_signal = (prn * 0.20).astype(np.float32)  # Balanced for quality
     ycrcb[:, :, 0] = np.clip(ycrcb[:, :, 0].astype(np.float32) + spatial_signal, 0, 255).astype(np.uint8)
 
     final = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
@@ -191,13 +215,13 @@ def scan_orientation(img: np.ndarray, master_ycrcb: Optional[np.ndarray] = None,
         chan = ycrcb[:, :, ch_idx].astype(np.float32); jnd_c = master_ycrcb[:,:,ch_idx] if master_ycrcb is not None else chan
         try:
             coeffs = pywt.wavedec2(chan, wavelet, level=4)
-            bands = [(coeffs[1][0], 4), (coeffs[1][1], 4), (coeffs[2][0], 3), (coeffs[2][1], 3), (coeffs[3][0], 2), (coeffs[3][1], 2)]
+            bands = [(coeffs[1][0], 4), (coeffs[1][1], 4), (coeffs[2][0], 3), (coeffs[2][1], 3)]
         except: continue
         votes = [[] for _ in range(PAYLOAD_LEN)]
         for band, level in bands:
             if ch_idx == 0 and level < 4: continue
             jnd = calculate_jnd_mask(jnd_c, band.shape)
-            scale = 2.0 if level == 4 else (1.4 if level == 3 else 0.8)
+            scale = 2.5 if level == 4 else 1.6
             d_map = BASE_DELTA * scale * jnd
             v1, v0 = np.round(band / d_map) * d_map + d_map/4, np.round(band / d_map) * d_map - d_map/4
             bits = (np.abs(band - v1) < np.abs(band - v0)).astype(np.int8).flatten()
@@ -212,21 +236,24 @@ def scan_orientation(img: np.ndarray, master_ycrcb: Optional[np.ndarray] = None,
             if dec:
                 m = "".join(chr(int("".join(map(str, dec[i:i+8])), 2)) for i in range(0, BIT_COUNT, 8))
                 for label in labels:
-                    if encrypt_employee_id(label)[:2] == m: results.append(label)
+                    if _get_encrypted_label(label)[:2] == m: results.append(label)
 
     if results:
         from collections import Counter
         counts = Counter(results).most_common(1)
-        if counts[0][1] >= 2: # Consensus: At least 2 channels must agree
+        # Fix 1: Relaxed consensus. If only one channel detected something (e.g. Grayscale), accept it.
+        # If multiple channels found data, require at least 2 to agree.
+        if len(results) == 1 or counts[0][1] >= 2:
             return counts[0][0]
         # If results exist but no consensus, we continue to spatial layer as fallback
 
-    # --- Layer 2: Fast Spatial Backstop (Robustness) ---
+    # --- Layer 2: Fast Spatial Backstop (Optimized) ---
     y_chan = ycrcb[:, :, 0].astype(np.float32)
     best_overall_corr = -1.0
     best_overall_label = None
     
-    for s_factor in [1.0, 0.75, 0.5, 0.35]: # Restore scales for survival
+    # Reduced scales [1.0, 0.5] for speed - covers most cases
+    for s_factor in [1.0, 0.5]:
         h_s, w_s = int(ycrcb.shape[0] * s_factor), int(ycrcb.shape[1] * s_factor)
         if h_s < 100 or w_s < 100: continue
         
@@ -234,7 +261,7 @@ def scan_orientation(img: np.ndarray, master_ycrcb: Optional[np.ndarray] = None,
         y_noise = cv2.Laplacian(y_s, cv2.CV_32F)
         
         for label in labels:
-            enc_id = encrypt_employee_id(label)
+            enc_id = _get_encrypted_label(label)
             import hashlib
             seed = int(hashlib.sha256(enc_id.encode()).hexdigest(), 16) % (2**32)
             np.random.seed(seed)
@@ -244,7 +271,7 @@ def scan_orientation(img: np.ndarray, master_ycrcb: Optional[np.ndarray] = None,
                 best_overall_corr = corr
                 best_overall_label = label
             
-    if best_overall_corr > 0.015: # Stricter threshold for spatial backstop
+    if best_overall_corr > 0.008:
         return best_overall_label
 
     return None
@@ -266,27 +293,59 @@ def extract_watermark(input_data: any, master_data: any = None, ignore_exif: boo
         elif hasattr(master_data, "convert"): m_arr = cv2.cvtColor(np.array(master_data.convert("RGB")), cv2.COLOR_RGB2BGR)
         else: m_arr = master_data
         if m_arr is not None: m_ycrcb = cv2.cvtColor(m_arr, cv2.COLOR_BGR2YCrCb)
+    # Optimized extraction with fewer rotations for speed
+    ROTATIONS = [0, 90, 180, 270]
+    
+    # Try WITHOUT alignment first (sometimes alignment destroys watermark)
+    for a in ROTATIONS:
+        rot = rotate_image(img, a) if a != 0 else img
+        res = scan_orientation(rot, m_ycrcb, valid_labels)
+        if res: return res, 1.0, rot
+    
+    # Try alignment as fallback
     if m_arr is not None:
         img_a = align_leak_to_master(img, m_arr)
         if img_a is not None:
-            for a in [0, 45, 90, 135, 180, 225, 270, 315]:
+            for a in ROTATIONS:
                 rot = rotate_image(img_a, a) if a != 0 else img_a
                 res = scan_orientation(rot, m_ycrcb, valid_labels)
                 if res: return res, 0.98, rot
+        
         img_l = log_polar_resync(img, m_arr)
         if img_l is not None:
-            for a in [0, 45, 90, 135, 180, 225, 270, 315]:
+            for a in ROTATIONS:
                 rot = rotate_image(img_l, a) if a != 0 else img_l
                 res = scan_orientation(rot, m_ycrcb, valid_labels)
                 if res: return res, 0.97, rot
     
-    # Fix 1: Multi-Scale Recovery Loop (Try extraction at various scales if alignment/DWT failed)
+    # Multi-Scale Recovery (improved for scaling attacks)
     h_orig, w_orig = img.shape[:2]
-    for scale in [1.0, 0.75, 0.5, 0.35]:
-        img_scaled = cv2.resize(img, (int(w_orig * scale), int(h_orig * scale))) if scale != 1.0 else img
-        for a in [0, 45, 90, 135, 180, 225, 270, 315]:
+    for scale in [1.0, 0.75, 0.5, 0.35, 0.25]:
+        if scale != 1.0:
+            img_scaled = cv2.resize(img, (int(w_orig * scale), int(h_orig * scale)))
+            m_ycrcb_scaled = cv2.resize(m_ycrcb, (int(w_orig * scale), int(h_orig * scale))) if m_ycrcb is not None else None
+        else:
+            img_scaled = img
+            m_ycrcb_scaled = m_ycrcb
+        
+        # Try extraction at this scale
+        for a in ROTATIONS:
             rot = rotate_image(img_scaled, a) if a != 0 else img_scaled
-            res = scan_orientation(rot, m_ycrcb, valid_labels)
+            res = scan_orientation(rot, m_ycrcb_scaled, valid_labels)
             if res: return res, 1.0 * scale, rot
+        
+        # Try alignment at this scale
+        if m_arr is not None and scale < 1.0:
+            m_arr_scaled = cv2.resize(m_arr, (int(w_orig * scale), int(h_orig * scale)))
+            img_aligned = align_leak_to_master(img_scaled, m_arr_scaled)
+            if img_aligned is not None:
+                for a in ROTATIONS:
+                    rot = rotate_image(img_aligned, a) if a != 0 else img_aligned
+                    res = scan_orientation(rot, m_ycrcb_scaled, valid_labels)
+                    if res: return res, 0.95 * scale, rot
+            
+                # Also try without master
+                res = scan_orientation(img_aligned, None, valid_labels)
+                if res: return res, 0.95 * scale, img_aligned
             
     return None, 0.0, img.copy()

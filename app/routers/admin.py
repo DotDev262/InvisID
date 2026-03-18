@@ -40,7 +40,13 @@ async def upload_master_image(
     file: UploadFile = File(...)
 ):
     content = await file.read()
-    ext = os.path.splitext(file.filename)[1].lower()
+    
+    # SECURITY: Sanitize filename to prevent path traversal
+    safe_filename = os.path.basename(file.filename)
+    if not safe_filename or safe_filename.startswith('.'):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    ext = os.path.splitext(safe_filename)[1].lower()
     if ext not in settings.ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Unsupported extension")
 

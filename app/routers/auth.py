@@ -1,3 +1,4 @@
+import hashlib
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
@@ -8,6 +9,16 @@ settings = get_settings()
 
 class LoginRequest(BaseModel):
     api_key: str
+
+def derive_signing_key(api_key: str) -> str:
+    """Derive a session-specific signing key from the API key using KDF."""
+    return hashlib.pbkdf2_hmac(
+        'sha256',
+        api_key.encode(),
+        settings.MASTER_SECRET.encode(),
+        iterations=100000,
+        dklen=32
+    ).hex()
 
 @router.post("/login")
 async def login(request: LoginRequest, response: Response):
@@ -49,12 +60,15 @@ async def login(request: LoginRequest, response: Response):
 
     from app.utils.instance import SERVER_INSTANCE_ID
 
+    # Derive a session-specific signing key (never expose MASTER_SECRET)
+    session_signing_key = derive_signing_key(request.api_key)
+
     return {
         "status": "success",
         "role": role,
         "employee_id": employee_id,
         "instance_id": SERVER_INSTANCE_ID,
-        "signing_key": settings.MASTER_SECRET # Frontend needs this to sign requests
+        "signing_key": session_signing_key  # Derived, not the actual MASTER_SECRET
     }
 
 @router.post("/logout")
