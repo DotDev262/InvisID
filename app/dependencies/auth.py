@@ -6,6 +6,7 @@ from typing import Annotated, Optional
 from fastapi import Cookie, Depends, Header, HTTPException, Request
 
 from app.config import get_settings
+from app.utils.crypto import derive_signing_key
 
 settings = get_settings()
 
@@ -21,12 +22,14 @@ class User:
 
 async def verify_signature(
     request: Request,
+    session_token: Optional[str] = Cookie(None),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
     x_signature: Optional[str] = Header(None, alias="X-Signature"),
     x_timestamp: Optional[str] = Header(None, alias="X-Timestamp")
 ):
     """
     Verify HMAC signature of the request to prevent replay attacks.
-    Signature = HMAC-SHA256(key=MASTER_SECRET, msg=timestamp + path)
+    Signature = HMAC-SHA256(key=DERIVED_KEY, msg=timestamp + path)
     """
     if not x_signature or not x_timestamp:
         raise HTTPException(status_code=403, detail="Request signature missing")
@@ -40,9 +43,14 @@ async def verify_signature(
         raise HTTPException(status_code=400, detail="Invalid timestamp") from ValueError
 
     # 2. Verify HMAC
+    api_key = session_token or x_api_key
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Authentication required for signature")
+
+    signing_key = derive_signing_key(api_key)
     msg = f"{x_timestamp}{request.url.path}"
     expected = hmac.new(
-        settings.MASTER_SECRET.encode(),
+        signing_key.encode(),
         msg.encode(),
         hashlib.sha256
     ).hexdigest()

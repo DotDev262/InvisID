@@ -265,13 +265,14 @@
             const formData = new FormData();
             formData.append('file', file);
             try {
-                const path = '/api/investigate';
-                const headers = await getAuthHeaders(path);
+                const path = '/api/investigate/';
+                const headers = await get_auth_headers(path);
                 const response = await fetch(path, { method: 'POST', headers: headers, body: formData });
                 if (!response.ok) throw new Error('Investigation failed to start');
                 const data = await response.json();
                 pollJob(data.job_id);
             } catch (error) {
+
                 showToast(error.message, 'error');
                 document.getElementById('processing-card').classList.add('hidden');
                 document.getElementById('drop-zone').classList.remove('hidden');

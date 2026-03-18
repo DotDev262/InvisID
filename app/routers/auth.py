@@ -3,22 +3,13 @@ from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
 from app.config import get_settings
+from app.utils.crypto import derive_signing_key
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 settings = get_settings()
 
 class LoginRequest(BaseModel):
     api_key: str
-
-def derive_signing_key(api_key: str) -> str:
-    """Derive a session-specific signing key from the API key using KDF."""
-    return hashlib.pbkdf2_hmac(
-        'sha256',
-        api_key.encode(),
-        settings.MASTER_SECRET.encode(),
-        iterations=100000,
-        dklen=32
-    ).hex()
 
 @router.post("/login")
 async def login(request: LoginRequest, response: Response):

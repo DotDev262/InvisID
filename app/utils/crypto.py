@@ -17,6 +17,16 @@ def _derive_key(salt: bytes = b"invisid_storage") -> bytes:
         dklen=32
     )
 
+def derive_signing_key(api_key: str) -> str:
+    """Derive a session-specific signing key from the API key using KDF."""
+    return hashlib.pbkdf2_hmac(
+        'sha256',
+        api_key.encode(),
+        settings.MASTER_SECRET.encode(),
+        iterations=100000,
+        dklen=32
+    ).hex()
+
 def encrypt_data(data: bytes) -> bytes:
     """
     Encrypt data using AES-256-GCM with derived key.

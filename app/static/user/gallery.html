@@ -640,33 +640,33 @@
             } catch (e) { console.error("Strike report failed", e); }
         }
 
-        // 1. Disable Right Click (Temp Disabled)
+        // 1. Disable Right Click
         document.addEventListener('contextmenu', (e) => {
             if (e.target.tagName === 'IMG' || e.target.closest('#gallery-grid')) {
-                // e.preventDefault();
-                // reportSecurityStrike('RIGHT_CLICK', e.target.alt || 'Asset Preview');
-                return true;
+                e.preventDefault();
+                reportSecurityStrike('RIGHT_CLICK', e.target.alt || 'Asset Preview');
+                return false;
             }
         });
 
         // 2. Advanced Key Detection (Screenshots & DevTools)
         document.addEventListener('keydown', (e) => {
-            // Screenshot heuristics (Temp Disabled)
+            // Screenshot heuristics
             if (e.key === 'PrintScreen' || (e.metaKey && e.shiftKey && (e.key === '3' || e.key === '4'))) {
-                // reportSecurityStrike('SCREENSHOT_KEY');
-                // e.preventDefault();
+                reportSecurityStrike('SCREENSHOT_KEY');
+                e.preventDefault();
             }
             // DevTools heuristics (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U)
             if (e.key === 'F12' || 
                (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j' || e.key === 'C' || e.key === 'c')) ||
                (e.ctrlKey && (e.key === 'U' || e.key === 'u'))) {
-                // reportSecurityStrike('DEVTOOLS_ACCESS');
-                // e.preventDefault();
-                return true;
+                reportSecurityStrike('DEVTOOLS_ACCESS');
+                e.preventDefault();
+                return false;
             }
         });
 
-        // 3. DevTools Dimension Heuristic (Temp Disabled)
+        // 3. DevTools Dimension Heuristic
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
@@ -679,20 +679,20 @@
                 if (widthDiff > threshold || heightDiff > threshold) {
                     const shield = document.getElementById('screen-shield');
                     if (shield.classList.contains('hidden')) {
-                        // reportSecurityStrike('DEVTOOLS_RESIZE_HEURISTIC', 'Window State');
-                        // shield.classList.remove('hidden');
-                        // shield.classList.add('flex');
+                        reportSecurityStrike('DEVTOOLS_RESIZE_HEURISTIC', 'Window State');
+                        shield.classList.remove('hidden');
+                        shield.classList.add('flex');
                     }
                 }
             }, 500); // 500ms debounce to ignore snapping transitions
         });
 
-        // 4. Page Visibility / Screen Capture Shield (Temp Disabled)
+        // 4. Page Visibility / Screen Capture Shield
         document.addEventListener('visibilitychange', () => {
             const shield = document.getElementById('screen-shield');
             if (document.hidden) {
-                // shield.classList.remove('hidden');
-                // shield.classList.add('flex');
+                shield.classList.remove('hidden');
+                shield.classList.add('flex');
             } else {
                 shield.classList.add('hidden');
                 shield.classList.remove('flex');
@@ -706,8 +706,8 @@
             window.addEventListener('blur', () => {
                 if (isDownloading) return; // Skip shield if we are currently downloading
                 const shield = document.getElementById('screen-shield');
-                // shield.classList.remove('hidden');
-                // shield.classList.add('flex');
+                shield.classList.remove('hidden');
+                shield.classList.add('flex');
             });
             window.addEventListener('focus', () => {
                 const shield = document.getElementById('screen-shield');

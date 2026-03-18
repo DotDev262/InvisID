@@ -2,17 +2,18 @@ import json
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from app.models.schemas import JobResponse
 from app.utils.db import get_db
 from app.utils.logging import get_logger
+from app.dependencies.auth import AdminUser
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = get_logger("app.jobs")
 
 @router.get("/{job_id}", response_model=JobResponse)
-async def get_job_status(job_id: str):
+async def get_job_status(job_id: str, user: AdminUser):
     """
     Get the status and result of a background job from SQLite.
     """

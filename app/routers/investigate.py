@@ -1,13 +1,14 @@
 import os
 import uuid
 import time
-from fastapi import APIRouter, File, HTTPException, UploadFile, BackgroundTasks
+from fastapi import APIRouter, File, HTTPException, UploadFile, BackgroundTasks, Depends
 from fastapi.responses import FileResponse, Response
 
 from app.config import get_settings
 from app.services.image_service import extract_watermark
 from app.routers import jobs, logs
 from app.utils.logging import get_logger
+from app.dependencies.auth import AdminUser
 
 router = APIRouter(prefix="/investigate", tags=["investigation"])
 settings = get_settings()
@@ -93,6 +94,7 @@ def process_investigation_task(job_id: str, file_path: str, original_filename: s
 
 @router.post("/")
 async def investigate_image(
+    user: AdminUser,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...)
 ):
@@ -135,7 +137,7 @@ async def investigate_image(
     }
 
 @router.get("/{job_id}/preview")
-async def get_investigation_evidence_preview(job_id: str):
+async def get_investigation_evidence_preview(job_id: str, user: AdminUser):
     """Serve a preview of the preserved forensic evidence (suspected leak)."""
     os.makedirs(settings.RESULT_DIR, exist_ok=True)
     
@@ -153,7 +155,7 @@ async def get_investigation_evidence_preview(job_id: str):
     return FileResponse(os.path.join(settings.RESULT_DIR, evidence_file))
 
 @router.get("/history")
-async def get_investigation_history():
+async def get_investigation_history(user: AdminUser):
     """Retrieve all completed forensic reports."""
     from app.utils.db import get_db
     import json
@@ -173,7 +175,7 @@ async def get_investigation_history():
     return reports
 
 @router.get("/{job_id}/export")
-async def export_investigation_report(job_id: str):
+async def export_investigation_report(job_id: str, user: AdminUser):
     """
     Generate a formal PDF forensic report for a specific investigation.
     """
