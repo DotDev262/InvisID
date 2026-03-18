@@ -16,7 +16,7 @@ settings = get_settings()
 BIT_COUNT = 16
 RS_ECC_BYTES = 32
 rs = RSCodec(RS_ECC_BYTES)
-BASE_DELTA = 44.0  # Higher for robustness
+BASE_DELTA = 50.0  # Higher for JPEG robustness
 PAYLOAD_LEN = BIT_COUNT + RS_ECC_BYTES * 8
 
 DEFAULT_VALID_LABELS = ["ADMIN", "EMP-001", "EMP-002", "EMP-003", "CON-004", "INT-005", "GST-006", "EMP-007", "EMP-008", "EMP-999"]
