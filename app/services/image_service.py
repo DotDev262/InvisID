@@ -256,14 +256,14 @@ def embed_watermark(input_data: any, watermark_data: str, output_path: Optional[
     for ch_idx in [0, 1, 2]:
         chan = ycrcb[:, :, ch_idx].astype(np.float32)
         coeffs = pywt.wavedec2(chan, wavelet, level=4)
-        for level in [3, 4]:
+        for level in [3, 4]:  # Multi-scale for redundancy
             if ch_idx == 0 and level < 4: continue  # Y channel: only level 4
             if level == 4: target_bands = [coeffs[1][0], coeffs[1][1]]
             elif level == 3: target_bands = [coeffs[2][0], coeffs[2][1]]
             elif level == 2: target_bands = [coeffs[3][0], coeffs[3][1]]
             for band_idx, band in enumerate(target_bands):
                 jnd = calculate_jnd_mask(chan, band.shape)
-                scale = 2.5 if level == 4 else (1.6 if level == 3 else 0.9)
+                scale = 2.8 if level == 4 else 1.8
                 d_map = BASE_DELTA * scale * jnd
                 payload_map = np.tile(payload, (band.size // PAYLOAD_LEN) + 1)[:band.size].reshape(band.shape)
                 if level == 4: coeffs[1] = list(coeffs[1]); coeffs[1][band_idx] = qim_mod(band, payload_map, d_map); coeffs[1] = tuple(coeffs[1])
@@ -305,7 +305,7 @@ def scan_orientation(img: np.ndarray, master_ycrcb: Optional[np.ndarray] = None,
         for band, level in bands:
             if ch_idx == 0 and level < 4: continue
             jnd = calculate_jnd_mask(jnd_c, band.shape)
-            scale = 2.5 if level == 4 else 1.6
+            scale = 2.8 if level == 4 else 1.8
             d_map = BASE_DELTA * scale * jnd
             v1, v0 = np.round(band / d_map) * d_map + d_map/4, np.round(band / d_map) * d_map - d_map/4
             bits = (np.abs(band - v1) < np.abs(band - v0)).astype(np.int8).flatten()
