@@ -88,6 +88,90 @@ def decrypt_employee_id(cipher_text: str) -> Optional[str]:
         return unpad(cipher.decrypt_and_verify(ciphertext, tag), 16).decode()
     except: return None
 
+# --- CRYPTO (AES-GCM for authenticity and pattern hiding) ---
+
+# --- ASIFT (Affine-SIFT for rotation robustness) ---
+def affine_skew(tilt, phi, img, mask=None):
+    '''Apply affine transformation to simulate different viewing angles'''
+    h, w = img.shape[:2]
+    if mask is None:
+        mask = np.zeros((h, w), np.uint8)
+        mask[:] = 255
+    A = np.float32([[1, 0, 0], [0, 1, 0]])
+    if phi != 0.0:
+        phi = np.deg2rad(phi)
+        s, c = np.sin(phi), np.cos(phi)
+        A = np.float32([[c,-s], [ s, c]])
+        corners = [[0, 0], [w, 0], [w, h], [0, h]]
+        tcorners = np.int32(np.dot(corners, A.T))
+        x, y, w, h = cv2.boundingRect(tcorners.reshape(1,-1,2))
+        A = np.hstack([A, [[-x], [-y]]])
+        img = cv2.warpAffine(img, A, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    if tilt != 1.0:
+        s = 0.8*np.sqrt(tilt*tilt-1)
+        img = cv2.GaussianBlur(img, (0, 0), sigmaX=s, sigmaY=0.01)
+        img = cv2.resize(img, (0, 0), fx=1.0/tilt, fy=1.0, interpolation=cv2.INTER_NEAREST)
+        A[0] /= tilt
+    if phi != 0.0 or tilt != 1.0:
+        h, w = img.shape[:2]
+        mask = cv2.warpAffine(mask, A, (w, h), flags=cv2.INTER_NEAREST)
+    Ai = cv2.invertAffineTransform(A)
+    return img, mask, Ai
+
+
+def affine_detect(detector, img, mask=None):
+    '''Apply affine transformations and detect keypoints'''
+    params = [(1.0, 0.0)]
+    for t in 2**(0.5*np.arange(1,4)):  # Reduced for speed
+        for phi in np.arange(0, 180, 72.0 / t):
+            params.append((t, phi))
+    
+    keypoints, descrs = [], []
+    for t, phi in params:
+        timg, tmask, Ai = affine_skew(t, phi, img)
+        kps, des = detector.detectAndCompute(timg, tmask)
+        for kp in kps:
+            x, y = kp.pt
+            kp.pt = tuple(np.dot(Ai, (x, y, 1)))
+        keypoints.extend(kps)
+        if des is not None:
+            descrs.extend(des)
+    return keypoints, np.array(descrs) if descrs else np.array([])
+
+
+def align_leak_asift(leak_img: np.ndarray, master_img: np.ndarray) -> Optional[np.ndarray]:
+    '''ASIFT-based alignment for full rotation invariance'''
+    try:
+        h_o, w_o = master_img.shape[:2]
+        s_c = 1000.0 / max(h_o, w_o)
+        m_c = cv2.resize(cv2.cvtColor(master_img, cv2.COLOR_BGR2GRAY), (int(w_o*s_c), int(h_o*s_c)))
+        l_c = cv2.resize(cv2.cvtColor(leak_img, cv2.COLOR_BGR2GRAY), (int(w_o*s_c), int(h_o*s_c)))
+        
+        sift = cv2.SIFT_create(5000)
+        kp1, des1 = affine_detect(sift, m_c)
+        kp2, des2 = affine_detect(sift, l_c)
+        
+        if len(kp1) < 10 or len(kp2) < 10:
+            return None
+            
+        matcher = cv2.FlannBasedMatcher(dict(algorithm=1, trees=5), dict(checks=50))
+        matches = matcher.knnMatch(des2, des1, k=2)
+        good = [m for m, n in matches if m.distance < 0.7 * n.distance]
+        
+        if len(good) < 10:
+            return None
+            
+        src_pts = np.float32([kp2[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+        dst_pts = np.float32([kp1[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+        
+        M, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+        if M is None:
+            return None
+            
+        return cv2.warpPerspective(leak_img, M, (w_o, h_o), borderMode=cv2.BORDER_REPLICATE)
+    except:
+        return None
+
 # --- ALIGNMENT ---
 
 def rotate_image(image, angle):
@@ -317,6 +401,14 @@ def extract_watermark(input_data: any, master_data: any = None, ignore_exif: boo
                 rot = rotate_image(img_l, a) if a != 0 else img_l
                 res = scan_orientation(rot, m_ycrcb, valid_labels)
                 if res: return res, 0.97, rot
+        
+        # Try ASIFT alignment for full rotation invariance
+        img_asift = align_leak_asift(img, m_arr)
+        if img_asift is not None:
+            for a in ROTATIONS:
+                rot = rotate_image(img_asift, a) if a != 0 else img_asift
+                res = scan_orientation(rot, m_ycrcb, valid_labels)
+                if res: return res, 0.96, rot
     
     # Multi-Scale Recovery (improved for scaling attacks)
     h_orig, w_orig = img.shape[:2]
