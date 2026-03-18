@@ -55,6 +55,7 @@ def audit_single_asset(args):
     from app.utils.crypto import decrypt_data
     
     target_id = random.choice(id_pool)
+    print(f"🚀 Starting audit for {chosen_file} (Target ID: {target_id})")
     asset_results = []
     
     try:
@@ -90,6 +91,7 @@ def audit_single_asset(args):
         output_buffer = [f"\n🔍 Asset: {chosen_file} | ID: {target_id}", "-"*50]
         
         for name, attack_func in attacks:
+            t_start = time.time()
             if name == "EXIF Recovery":
                 ext_id, conf, _ = extract_watermark(temp_wm_path, master_data=img_master)
             else:
@@ -99,7 +101,8 @@ def audit_single_asset(args):
             is_pass = ext_id == target_id
             if is_pass: passed += 1
             status = "✅ PASS" if is_pass else f"❌ FAIL (Got: {ext_id})"
-            output_buffer.append(f"  [{name:20}] -> {status} ({conf*100:.0f}%)")
+            duration = time.time() - t_start
+            output_buffer.append(f"  [{name:20}] -> {status} ({conf*100:.0f}%) [{duration:.2f}s]")
             
         # Cleanup
         if os.path.exists(temp_wm_path): os.remove(temp_wm_path)
@@ -107,13 +110,14 @@ def audit_single_asset(args):
         
         score = passed / len(attacks)
         output_buffer.append(f"--- Score: {passed}/{len(attacks)} ---")
+        print(f"✅ Finished audit for {chosen_file}")
         return score, "\n".join(output_buffer)
         
     except Exception as e:
         return 0.0, f"💥 CRASH on {chosen_file}: {e}"
 
 def run_exhaustive_audit():
-    print("🚀 --- InvisID Parallel Randomized Forensic Audit --- 🚀")
+    print("🚀 --- InvisID Parallel Forensic Audit --- 🚀")
     start_time = time.time()
     
     from dotenv import load_dotenv
@@ -127,11 +131,13 @@ def run_exhaustive_audit():
 
     id_pool = ["EMP-001", "EMP-002", "EMP-003", "CON-004", "INT-005", "GST-006", "EMP-007", "EMP-008", "EMP-999", "ADMIN"]
     
-    # Run in Parallel
+    print(f"📊 Found {len(files)} assets. Processing with {cpu_count()} workers...")
+    
     worker_args = [(f, upload_dir, id_pool) for f in files]
-    # Use 1 worker per asset, up to the number of available cores
-    with Pool(processes=min(len(files), cpu_count())) as pool:
-        results = pool.map(audit_single_asset, worker_args)
+    
+    # Use Pool for parallel execution
+    with Pool(cpu_count()) as p:
+        results = p.map(audit_single_asset, worker_args)
 
     # Print consolidated results
     total_score = 0
