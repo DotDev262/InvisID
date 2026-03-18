@@ -15,7 +15,7 @@ from app.config import get_settings
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.models.schemas import HealthResponse
-from app.routers import admin, auth, images, investigate, jobs, logs, stress_test, security
+from app.routers import admin, auth, images, investigate, jobs, logs, security
 from app.utils.logging import get_logger, setup_logging
 from app.utils.instance import SERVER_INSTANCE_ID
 
@@ -129,7 +129,6 @@ app.include_router(admin.router, prefix="/api")
 app.include_router(images.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(investigate.router, prefix="/api")
-app.include_router(stress_test.router, prefix="/api")
 app.include_router(logs.router, prefix="/api")
 app.include_router(security.router, prefix="/api")
 
@@ -157,10 +156,6 @@ async def admin_trash_ui():
 @app.get("/admin/audit-logs")
 async def admin_audit_logs_ui():
     return FileResponse(os.path.join(static_dir, "admin/audit_logs.html"))
-
-@app.get("/admin/stress-test")
-async def admin_stress_test_ui():
-    return FileResponse(os.path.join(static_dir, "admin/stress_test.html"))
 
 
 @app.get("/robots.txt")
